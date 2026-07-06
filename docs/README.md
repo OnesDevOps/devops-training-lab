@@ -2,7 +2,7 @@
 
 > Architecture and design documentation for the DevOps Training Lab.
 >
-> **GitHub Organization:** [https://github.com/OnesDevOps](https://github.com/OnesDevOps) — All source code repositories live here.
+> **Gitea Organization:** [http://192.168.8.80:3000/nisalatp](http://192.168.8.80:3000/nisalatp) — All source code repositories live here on our local Gitea server.
 
 ## Index
 

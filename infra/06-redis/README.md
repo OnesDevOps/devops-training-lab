@@ -4,55 +4,23 @@
 
 ---
 
-## 01 — Deploy with Terraform
+## 01 — Deploy Redis on `db-node-1`
 
-Create `infra/06-redis/terraform/redis.tf`:
+Because our databases run across multiple dedicated Multipass VMs, we will deploy Redis directly onto `db-node-1` using Docker.
 
-```hcl
-resource "docker_image" "redis" {
-  name = "redis:7-alpine"
-}
-
-resource "docker_volume" "redis_data" {
-  name = "redis-data"
-}
-
-resource "docker_container" "redis" {
-  name  = "redis"
-  image = docker_image.redis.image_id
-
-  ports {
-    internal = 6379
-    external = 6379
-  }
-
-  command = [
-    "redis-server",
-    "--maxmemory", "256mb",
-    "--maxmemory-policy", "allkeys-lru",
-    "--save", "60", "1000",
-  ]
-
-  volumes {
-    volume_name    = docker_volume.redis_data.name
-    container_path = "/data"
-  }
-
-  memory = 300
-
-  networks_advanced {
-    name = docker_network.lab_net.name
-  }
-
-  restart = "unless-stopped"
-}
-```
-
-### Apply
+Run the following command from the **Developer Desktop** to launch Redis via SSH:
 
 ```bash
-cd infra/06-redis/terraform
-terraform init && terraform apply
+# Replace 10.202.73.32 with the actual IP of db-node-1
+ssh ubuntu@10.202.73.32 '
+  docker run -d \
+    --name redis \
+    --restart unless-stopped \
+    -p 6379:6379 \
+    -v redis_data:/data \
+    redis:7-alpine \
+    redis-server --save 60 1 --loglevel warning
+'
 ```
 
 ---
@@ -60,10 +28,8 @@ terraform init && terraform apply
 ## 02 — Verify
 
 ```bash
-ssh datacenter "docker exec redis redis-cli ping"
-# Expected: PONG
-
-ssh datacenter "docker exec redis redis-cli info memory | head -5"
+ssh ubuntu@10.202.73.32 "docker exec -it redis redis-cli ping"
+# Expected output: PONG
 ```
 
 ---

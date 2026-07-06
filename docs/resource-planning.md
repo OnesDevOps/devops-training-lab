@@ -1,6 +1,6 @@
 # Resource Planning
 
-> Memory, CPU, and disk budgets for all four machines in the DevOps Training Lab.
+> Memory, CPU, and disk budgets for all machines and VMs in the DevOps Training Lab.
 
 ---
 
@@ -10,44 +10,49 @@
 |---------|-----|-----|-----|------|-----------|
 | VM 1: Developer Desktop | Ubuntu Desktop | 4 GB | 2 cores | 40 GB | MacBook (UTM) |
 | VM 2: Container Registry | Debian 12 Minimal | 1 GB | 1 core | 80 GB | MacBook (UTM) |
-| VM 3: Dependency Cache | Debian 12 Minimal | 1.5 GB | 1 core | 60 GB | MacBook (UTM) |
-| Datacenter | Ubuntu Desktop | 16 GB | 8 cores | 100+ GB | Lenovo Laptop |
-| **MacBook Total (VMs)** | | **6.5 GB** | **4 cores** | **180 GB** | |
-
-> **Why Debian 12 Minimal for VMs 2 & 3?** Alpine idles at ~60 MB RAM vs Ubuntu's ~400 MB. Since these VMs only run Docker containers, a full desktop/server OS is unnecessary. This saves ~700 MB across both VMs.
+| **Datacenter Host** | Ubuntu Desktop | 16 GB | 16 cores| 500+ GB| Lenovo Laptop |
+| VM 4: `k8s-master` | Ubuntu Cloud | 1 GB | 1 core | 10 GB | Lenovo (Multipass) |
+| VM 5: `k8s-worker-1` | Ubuntu Cloud | 2 GB | 2 cores | 15 GB | Lenovo (Multipass) |
+| VM 6: `db-node-1` | Ubuntu Cloud | 2 GB | 2 cores | 15 GB | Lenovo (Multipass) |
+| VM 7: `db-node-2` | Ubuntu Cloud | 2.5 GB| 2 cores | 15 GB | Lenovo (Multipass) |
+| VM 8: Source Control | Ubuntu Server | 1 GB | 1 core | 20 GB | MacBook (UTM) |
 
 ---
 
 ## Datacenter Memory Budget (16 GB)
 
-> **Note:** The Datacenter runs Ubuntu Desktop. The GNOME desktop environment uses ~500-800 MB. You can disable it to reclaim memory: `sudo systemctl set-default multi-user.target && sudo reboot`
+> **Note:** The Lenovo laptop acts as a hypervisor host for 4 Virtual Machines using Multipass.
 
-### Baseline (Min Replicas)
+### Hypervisor Allocation
 
-| Component | Where | Min | Max | Notes |
-|-----------|-------|-----|-----|-------|
-| Ubuntu Desktop + System | Host | 2.0 GB | 2.5 GB | Kernel, systemd, sshd, GNOME |
-| Docker Engine | Host | 200 MB | 200 MB | Daemon overhead |
-| K3s Control Plane | Host | 500 MB | 750 MB | API server, Flannel, CoreDNS, Traefik |
-| Kafka (KRaft) | Docker | 768 MB | 1024 MB | JVM heap 512MB + buffers |
-| Redis | Docker | 100 MB | 300 MB | `maxmemory 256mb` |
-| PostgreSQL | Docker | 200 MB | 300 MB | `shared_buffers=128MB` |
-| MongoDB | Docker | 300 MB | 400 MB | `wiredTigerCacheSizeGB=0.25` |
-| Angular Frontend (×1) | K3s | 64 MB | 256 MB | Nginx |
-| Customer Service (×1) | K3s | 256 MB | 512 MB | JVM: `-Xmx384m` |
-| Lab Service (×1) | K3s | 128 MB | 512 MB | .NET: `GCHeapHardLimit` |
-| **TOTAL** | | **~4.5 GB** | **~6.8 GB** | |
-| **FREE** | | **~11.5 GB** | **~9.2 GB** | ✅ Plenty of room |
+| Component | RAM | CPU | Notes |
+|-----------|-----|-----|-------|
+| Lenovo Host OS | ~8.5 GB | 9 cores | Ubuntu Desktop overhead & spare capacity |
+| `k8s-master` | 1 GB | 1 core | K3s Control Plane |
+| `k8s-worker-1` | 2 GB | 2 cores | App Pods (Angular, Java, .NET) |
+| `db-node-1` | 2 GB | 2 cores | Postgres, Mongo, Redis |
+| `db-node-2` | 2.5 GB| 2 cores | Kafka, MinIO |
+| **TOTAL** | **16 GB** | **16 cores** | Fully utilized |
 
-### Scaled Up (Max 2 Replicas Each)
+### K3s Worker Node Capacity (2 GB)
 
-| Category | Max Total |
-|----------|----------|
-| OS + Docker + K3s | ~3.5 GB |
-| Data Services (Kafka, Redis, PG, Mongo) | ~2.0 GB |
-| App Pods (Angular×2, Java×2, .NET×2) | ~2.6 GB |
-| **TOTAL** | **~8.1 GB** |
-| **FREE** | **~7.9 GB** ✅ |
+| Component | Min RAM | Max RAM | Notes |
+|-----------|---------|---------|-------|
+| Ubuntu + K3s Agent | 500 MB | 700 MB | |
+| Angular Frontend (×1-2) | 64 MB | 256 MB | Nginx (HPA) |
+| Customer Service (×1-2) | 256 MB | 768 MB | Java Spring Boot (HPA) |
+| Lab Service (×1-2) | 128 MB | 512 MB | .NET ASP.NET Core (HPA) |
+| **TOTAL (Scaled up)** | | **~2.2 GB** | ✅ Plenty of room |
+
+### Database Nodes Capacity (2 GB & 2.5 GB)
+
+| Component | Node | Max RAM | Notes |
+|-----------|------|---------|-------|
+| PostgreSQL | `db-node-1` | 500 MB | Relational DB |
+| MongoDB | `db-node-1` | 1.0 GB | Document DB |
+| Redis | `db-node-1` | 300 MB | Shared Cache |
+| Kafka (KRaft) | `db-node-2` | 1.5 GB | Message Broker |
+| MinIO | `db-node-2` | 1.0 GB | Object Storage |
 
 ---
 
@@ -56,27 +61,24 @@
 | VM | OS | Idle RAM | Active RAM | Key Process |
 |----|----|----------|------------|-------------|
 | Dev Desktop | Ubuntu Desktop | ~400 MB | ~2-3 GB | Jenkins + builds |
-| Container Registry | Debian 12 Minimal | ~60 MB | ~1 GB | Harbor containers |
-| Dependency Cache | Debian 12 Minimal | ~60 MB | ~1.2 GB | Nexus (Java-based) |
-| **Total** | | **~520 MB** | **~4-5 GB** | |
+| Container Registry | Debian 12 Minimal | ~30 MB | ~500 MB | Docker Registry |
+| Source Control | Ubuntu Server | ~100 MB | ~500 MB | Gitea |
+| **Total** | | **~580 MB** | **~4.5-5.5 GB** | |
 
 ---
 
 ## Monitoring Commands
 
 ```bash
-# Datacenter — host memory
-ssh datacenter "free -h"
+# Datacenter — view all VMs
+multipass list
 
-# Datacenter — container memory
-ssh datacenter "docker stats --no-stream"
+# Enter a specific VM
+multipass shell k8s-worker-1
 
-# Datacenter — K3s resources
+# View K3s resources from Dev Workstation
 kubectl top nodes
 kubectl top pods --all-namespaces
-
-# Check for OOM kills
-kubectl get events --field-selector reason=OOMKilling
 ```
 
 ---

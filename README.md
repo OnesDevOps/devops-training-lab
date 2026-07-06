@@ -2,7 +2,7 @@
 
 > A hands-on, enterprise-grade microservices infrastructure lab for training DevOps engineers.
 
-**GitHub Organization:** [https://github.com/OnesDevOps](https://github.com/OnesDevOps)
+**Gitea Organization:** [http://192.168.8.80:3000/nisalatp](http://192.168.8.80:3000/nisalatp)
 
 ---
 
@@ -20,9 +20,9 @@ MacBook M5 Pro (UTM Host)                         Lenovo Laptop (Standalone)
 | Machine | Role | Hosted On |
 |---------|------|-----------|
 | **Developer Desktop** | Git, Jenkins, Ansible, Terraform, kubectl | MacBook (UTM VM) |
-| **Container Registry** | Harbor — private Docker image storage | MacBook (UTM VM) |
+| **Container Registry** | Docker Registry (`registry:2`) — private Docker image storage | MacBook (UTM VM) |
 | **Dependency Cache** | Nexus — Maven, npm, NuGet proxy/cache | MacBook (UTM VM) |
-| **Datacenter** | K3s, Kafka, Redis, PostgreSQL, MongoDB | Lenovo Laptop |
+| **Datacenter** | Multipass Hypervisor (k8s-master, k8s-worker, db-node-1, db-node-2) | Lenovo Laptop |
 
 ---
 
@@ -41,7 +41,7 @@ MacBook M5 Pro (UTM Host)                         Lenovo Laptop (Standalone)
 |------|--------|---------------|
 | 0 | `infra/00-developer-workstation/` | Set up Developer Desktop VM (tools, SSH) |
 | 1 | `infra/01-datacenter-prerequisites/` | Prepare the Datacenter (Docker, system config) |
-| 2 | `infra/02-container-registry/` | Deploy Harbor private Docker registry (VM 2) |
+| 2 | `infra/02-container-registry/` | Deploy official Docker registry (VM 2) |
 | 3 | `infra/03-dependency-cache/` | Deploy Nexus dependency cache (VM 3) |
 | 4 | `infra/04-kubernetes/` | Install K3s on Datacenter |
 | 5 | `infra/05-kafka/` | Deploy Apache Kafka (KRaft mode) |
@@ -70,9 +70,10 @@ MacBook M5 Pro (UTM Host)                         Lenovo Laptop (Standalone)
 | Orchestration | K3s (Kubernetes) |
 | Messaging | Apache Kafka (KRaft) |
 | Caching | Redis |
+| Object Storage | MinIO |
 | Relational DB | PostgreSQL |
 | Document DB | MongoDB |
-| Container Registry | Harbor |
+| Container Registry | Docker Registry (`registry:2`) |
 | Dependency Cache | Nexus Repository Manager |
 | CI/CD | Jenkins |
 | IaC | Terraform + Ansible |

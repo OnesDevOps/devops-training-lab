@@ -17,8 +17,11 @@
 9. [Jenkins](#29-jenkins)
 10. [Terraform](#210-terraform)
 11. [Ansible](#211-ansible)
-12. [Harbor — Container Registry](#212-harbor--container-registry)
-13. [Nexus — Dependency Cache](#213-nexus--dependency-cache)
+12. [Docker Registry (`registry:2`) — Container Registry](#212-docker-registry--container-registry)
+13. [Multipass — Hypervisor](#214-multipass--hypervisor)
+14. [MinIO — Object Storage](#215-minio--object-storage)
+15. [Gitea — Source Control](#216-gitea--source-control)
+16. [Argo CD — GitOps Delivery](#217-argo-cd--gitops-delivery)
 
 ---
 
@@ -36,7 +39,7 @@
 
 title K3s Cluster — Internal Architecture
 
-frame "K3s Cluster (Single Node)" as k3s {
+frame "K3s Cluster (Multi-Node)" as k3s {
     
     component [K3s Server\n(API Server + Scheduler\n+ Controller Manager\n+ etcd)] as server
     
@@ -85,7 +88,7 @@ frame "K3s Cluster (Single Node)" as k3s {
 
 ### Key Configuration Points
 
-- **Single-node mode:** Both server and agent run on the same Datacenter host (Lenovo laptop).
+- **Multi-node mode:** The Control Plane runs on the `k8s-master` VM, and the workloads run on the `k8s-worker-1` VM.
 - **Traefik Ingress:** Pre-installed. Routes external traffic to pods based on path rules.
 - **Containerd:** The container runtime. K3s does NOT use Docker for running pods.
 - **`kubeconfig`:** Located at `/etc/rancher/k3s/k3s.yaml`. Copy this to your Developer Desktop VM for remote `kubectl` access.
@@ -442,8 +445,8 @@ t1 --> ls : Consume customer-events
 
 - Runs on the **Developer Desktop VM (Ubuntu)**.
 - Watches Git repositories for changes.
-- Builds Docker images for all three applications (using dependencies cached in Nexus).
-- Pushes images to the **Harbor Container Registry**.
+- Builds Docker images for all three applications.
+- Pushes images to the **Docker Registry Container Registry**.
 - Deploys updated manifests to the K3s cluster on the Datacenter via remote `kubectl`.
 
 ### Pipeline Overview (PlantUML)
@@ -461,13 +464,14 @@ start
 |Jenkins (Dev Desktop)|
 :Detect change\n(Webhook / Poll SCM);
 :Checkout source code;
-:Run unit tests\n(via Nexus Cache);
+:Run unit tests;
+:Build JAR/DLL/JS artifacts;
 :Build Docker image\n(docker build);
-:Push image to\nHarbor Registry;
+:Push image to\nDocker Registry Registry;
 :Apply K8s manifests\n(kubectl apply -f);
 
 |K3s (Datacenter)|
-:Pull new image\nfrom Harbor;
+:Pull new image\nfrom Docker Registry;
 :Rolling update\nof Deployment pods;
 stop
 
@@ -553,33 +557,72 @@ redis --> v4
 
 ---
 
-## 2.12 Harbor — Container Registry
+## 2.12 Docker Registry — Container Registry
 
 ### What Is It?
 
-**Harbor** is an open-source, trusted cloud-native container registry that stores, signs, and scans content. It provides enterprise-level security, identity, and management features.
+**Docker Registry** (`registry:2`) is the official, open-source container registry implementation provided by Docker. It is a stateless, highly scalable server-side application that stores and lets you distribute Docker images.
 
 ### Role in This Architecture
 
-- Runs on a dedicated **Debian 12 Minimal VM** hosted in UTM on the MacBook.
+- Runs on a dedicated **Ubuntu Server VM** hosted in UTM on the MacBook.
 - Acts as the central, private storage for all Docker images built by Jenkins.
 - The K3s cluster on the Datacenter pulls application images exclusively from this registry.
 - Ensures all application code and built artifacts remain completely internal and confidential.
 
 ---
 
-## 2.13 Nexus — Dependency Cache
+## 2.13 Multipass — Hypervisor
 
 ### What Is It?
 
-**Sonatype Nexus Repository Manager (OSS)** is a repository manager that caches dependencies from public repositories (Maven Central, npmjs, NuGet Gallery) locally.
+**Multipass** is a lightweight VM manager by Canonical (the company behind Ubuntu) that uses cloud-init to launch Ubuntu virtual machines quickly and easily.
 
 ### Role in This Architecture
 
-- Runs on a dedicated **Debian 12 Minimal VM** hosted in UTM on the MacBook.
-- Serves as a transparent caching proxy for the Developer Desktop VM during Jenkins builds.
-- Drastically speeds up build times by serving cached Java `.jar`s, Node `.tgz` modules, and .NET `.nupkg`s over the local network instead of the internet.
-- Provides resilience in case upstream package registries experience downtime.
+- Runs on the Lenovo Datacenter, turning it into a hypervisor host.
+- Provisions isolated VMs (`k8s-master`, `k8s-worker`, `db-node-1`, `db-node-2`) that mimic an enterprise cloud architecture.
+- Keeps workloads strictly isolated from the host OS, ensuring cleaner deployments and avoiding port conflicts.
+
+---
+
+## 2.15 MinIO — Object Storage
+
+### What Is It?
+
+**MinIO** is a high-performance, S3-compatible object storage server. It is built for large scale AI/ML, data lake, and database workloads.
+
+### Role in This Architecture
+
+- Deployed natively via Docker on the Database nodes.
+- Exposes an AWS S3-compatible API so microservices can store and retrieve blob data (images, documents, backups) without needing an actual AWS account.
+- Crucial for learning cloud-native application patterns that rely on object storage rather than local filesystems.
+
+---
+
+## 2.16 Gitea — Source Control
+
+### What Is It?
+**Gitea** is a painless self-hosted Git service. It is a lightweight alternative to GitHub or GitLab, perfect for running on a private VM.
+
+### Why Is It Here?
+In an enterprise private cloud, you do not rely on public GitHub. Gitea allows us to host our source code entirely on-premises. More importantly, it provides **Webhooks** which notify Jenkins whenever code is pushed, kicking off the CI pipeline. It also hosts the Kubernetes manifest repository for Argo CD to watch.
+
+### How Is It Deployed?
+It runs as a Docker container on the `Source Control` VM (`192.168.8.80`).
+
+---
+
+## 2.17 Argo CD — GitOps Delivery
+
+### What Is It?
+**Argo CD** is a declarative, GitOps continuous delivery tool for Kubernetes. 
+
+### Why Is It Here?
+Instead of Jenkins imperatively running `kubectl apply` commands (push deployment), Argo CD constantly monitors the Gitea repository for changes to Kubernetes manifests. When Jenkins updates the image tag in Gitea, Argo CD detects the drift and automatically synchronizes the K3s cluster to match the Git repository (pull deployment). This is the gold standard for enterprise deployments.
+
+### How Is It Deployed?
+It is installed directly into the K3s cluster in the `argocd` namespace and exposed via NodePort or Ingress.
 
 ---
 

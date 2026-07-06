@@ -6,7 +6,7 @@
 
 ## 1.1 The Big Picture
 
-The lab simulates an enterprise microservices environment across **four machines**: three Ubuntu VMs on a MacBook (developer tools, container registry, dependency cache) and one physical Ubuntu server as the remote datacenter.
+The lab simulates an enterprise microservices environment across **four machines**: three Ubuntu VMs on a MacBook (developer tools, container registry, and source control) and one physical Ubuntu server as the remote datacenter.
 
 ### System Context Diagram (PlantUML)
 
@@ -22,35 +22,37 @@ node "MacBook M5 Pro (UTM Host)" as mac {
 
     node "VM 1: Developer Desktop\n(Ubuntu)" as vm1 {
         component [IDE / Code Editor] as ide
-        component [Git] as git
         component [Jenkins CI/CD] as jenkins
         component [Terraform + Ansible] as iac
         component [kubectl] as kctl
     }
 
     node "VM 2: Container Registry\n(Ubuntu Server)" as vm2 {
-        component [Harbor\nPrivate Docker Registry] as harbor
+        component [Docker Registry\nPrivate Docker Registry] as registry
     }
 
-    node "VM 3: Dependency Cache\n(Ubuntu Server)" as vm3 {
-        component [Nexus Repository Mgr\nMaven / npm / NuGet] as nexus
+    node "VM 8: Source Control\n(Ubuntu Server)" as vm8 {
+        component [Gitea\nGit Server] as gitea
     }
 }
 
-node "Lenovo Laptop — Datacenter\n(Ubuntu, i7, 16GB RAM)" as dc {
-    component [K3s Cluster] as k3s
-    component [Native Services\n(Kafka, Redis, PG, Mongo)] as native
+node "Lenovo Laptop — Datacenter\n(Multipass Hypervisor)" as dc {
+    component [k8s-master VM\n(K3s Control Plane)] as k3smaster {
+        component [Argo CD] as argocd
+    }
+    component [k8s-worker-1 VM\n(App Workloads)] as k3sworker
+    component [db-node VMs\n(Kafka, Mongo, PG, Redis, MinIO)] as native
 }
 
 dev --> ide : Writes code
-ide --> git : Commits
-git --> jenkins : Triggers build
-jenkins --> harbor : Push images
-jenkins --> k3s : Deploy apps
+ide --> gitea : Commits Code & Manifests
+gitea --> jenkins : Webhook Triggers CI
+jenkins --> registry : Build & Push image
+jenkins --> gitea : Update K8s Manifest Image Tag
+argocd --> gitea : Watch for Manifest Changes
+argocd --> k3sworker : Deploy Pods
 iac --> dc : Provision & configure
-k3s --> harbor : Pull images
-jenkins --> nexus : Fetch dependencies
-
+k3sworker --> registry : Pull images
 @enduml
 ```
 
@@ -63,9 +65,9 @@ jenkins --> nexus : Fetch dependencies
 | # | Machine | Type | OS | RAM | Role |
 |---|---------|------|----|-----|------|
 | 1 | Developer Desktop | UTM VM | Ubuntu Desktop | 4 GB | Code, CI/CD, IaC, kubectl |
-| 2 | Container Registry | UTM VM | Debian 12 Minimal | 1 GB | Harbor — private Docker images |
-| 3 | Dependency Cache | UTM VM | Debian 12 Minimal | 1.5 GB | Nexus — Maven, npm, NuGet cache |
-| 4 | Datacenter | Physical (Lenovo) | Ubuntu Desktop | 16 GB | K3s, Kafka, Redis, PG, Mongo |
+| 2 | Container Registry | UTM VM | Debian 12 Minimal | 1 GB | Docker Registry — private Docker images |
+| 4 | Datacenter | Physical (Lenovo) | Multipass Hypervisor | 16 GB | Hosts 4 VMs (k8s-master, k8s-worker, 2x db-nodes) |
+| 8 | Source Control | UTM VM | Ubuntu Server | 1 GB | Gitea — Self-hosted Git repositories |
 
 ### Developer Desktop (VM 1)
 
@@ -73,7 +75,7 @@ All **human-driven** and **control-plane** activity happens here:
 
 | Tool | Role |
 |------|------|
-| **Git** | Source control — pushes trigger CI/CD |
+| **Git CLI** | Local source control |
 | **Jenkins** | CI/CD orchestrator — builds, tests, deploys |
 | **Terraform** | Declares infrastructure on the Datacenter |
 | **Ansible** | Installs software, configures remote hosts |
@@ -83,17 +85,17 @@ All **human-driven** and **control-plane** activity happens here:
 
 | Component | Role |
 |-----------|------|
-| **Harbor** | Enterprise Docker registry with auth, RBAC, and vulnerability scanning |
+| **Docker Registry** | Enterprise Docker registry with auth, RBAC, and vulnerability scanning |
 
-> **Why Harbor?** Builds are confidential. Harbor provides authentication, role-based access control, audit logging, and optional image vulnerability scanning — all critical for enterprise security.
+> **Why Docker Registry?** Builds are confidential. Docker Registry provides authentication, role-based access control, audit logging, and optional image vulnerability scanning — all critical for enterprise security.
 
-### Dependency Cache (VM 3)
+### Source Control (VM 8)
 
 | Component | Role |
 |-----------|------|
-| **Nexus Repository Manager** | Proxies and caches Maven Central, npmjs.org, and NuGet.org |
+| **Gitea** | Lightweight, self-hosted Git service providing code hosting and CI/CD webhooks |
 
-> **Why separate from the registry?** In enterprise environments, artifact caches and container registries often run on different infrastructure for isolation and scaling. Separating them also teaches students about dependency management as a distinct concern.
+> **Why Gitea instead of GitHub?** A true private cloud lab hosts everything on-premises. Gitea allows us to simulate a self-hosted Enterprise GitHub/GitLab environment, complete with local webhooks to trigger our internal Jenkins instance and GitOps pipelines.
 
 ### Datacenter (Lenovo Laptop)
 
@@ -101,11 +103,10 @@ This is the **production-like deployment target** — it runs only workloads:
 
 | Component | Role |
 |-----------|------|
-| **K3s** | Lightweight Kubernetes — runs all apps in pods |
-| **Kafka** | Async messaging between backends (Docker, outside K3s) |
-| **Redis** | Shared cache (Docker, outside K3s) |
-| **PostgreSQL** | Relational DB for Customer Service (Docker, outside K3s) |
-| **MongoDB** | Document DB for Lab Service (Docker, outside K3s) |
+| **Multipass** | Native Ubuntu hypervisor that provisions lightweight VMs |
+| **k8s-master VM** | Runs the K3s Kubernetes Control Plane |
+| **k8s-worker-1 VM** | Runs the application microservices with HPA |
+| **db-node VMs** | Runs Kafka, Redis, PostgreSQL, MongoDB, and MinIO |
 
 ---
 
@@ -127,29 +128,35 @@ node "VM 1: Developer Desktop" as vm1 #LightBlue {
 }
 
 node "VM 2: Container Registry" as vm2 #LightYellow {
-    component [Harbor\nPort 443 (HTTPS)\nPort 80 (HTTP)] as harbor
-}
-
-node "VM 3: Dependency Cache" as vm3 #LightCyan {
-    component [Nexus\nPort 8081 (UI)\nMaven / npm / NuGet] as nexus
+    component [Docker Registry\nPort 80 (HTTP)] as registry
 }
 
 cloud "Network (LAN)" as net
 
-node "Datacenter (Lenovo)" as dc #LightGreen {
+node "Datacenter (Lenovo Multipass Hypervisor)" as dc #LightGreen {
 
-    frame "K3s Cluster (Kubernetes)" as k3s {
-        node "Pod: Angular Frontend\n(Nginx, min 1 / max 2)" as fe #PaleGoldenRod
-        node "Pod: Java Spring Boot\nCustomer Backend\n(min 1 / max 2)" as java #LightCoral
-        node "Pod: .NET ASP.NET Core\nLab Backend\n(min 1 / max 2)" as dotnet #LightSteelBlue
+    node "VM: k8s-master" {
+        component [K3s Control Plane]
+    }
+    
+    node "VM: k8s-worker-1" {
+        frame "K3s Cluster (Kubernetes)" as k3s {
+            node "Pod: Angular Frontend\n(Nginx, min 1 / max 2)" as fe #PaleGoldenRod
+            node "Pod: Java Spring Boot\nCustomer Backend\n(min 1 / max 2)" as java #LightCoral
+            node "Pod: .NET ASP.NET Core\nLab Backend\n(min 1 / max 2)" as dotnet #LightSteelBlue
+        }
     }
 
-    frame "Native Services (Docker, outside K3s)" as native {
-        database "Kafka\n(KRaft Mode)" as kafka #Tomato
-        database "Redis" as redis #Orange
-        database "PostgreSQL" as pg #RoyalBlue
-        database "MongoDB" as mongo #ForestGreen
+    node "VMs: db-node-1 / db-node-2" {
+        frame "Stateful Clusters" as native {
+            database "Kafka\n(KRaft Mode)" as kafka #Tomato
+            database "Redis" as redis #Orange
+            database "PostgreSQL" as pg #RoyalBlue
+            database "MongoDB" as mongo #MediumPurple
+            database "MinIO\n(Object Storage)" as minio #YellowGreen
+        }
     }
+
 
     fe -down-> java : REST API
     fe -down-> dotnet : REST API
@@ -164,11 +171,10 @@ node "Datacenter (Lenovo)" as dc #LightGreen {
     dotnet -down-> mongo : MongoDB Driver
 }
 
-jenkins ..> harbor : Push images
-jenkins ..> nexus : Fetch deps during build
+jenkins ..> registry : Push images
 jenkins ..> k3s : kubectl apply
 iac ..> dc : Provision & Configure
-k3s ..> harbor : Pull images
+k3s ..> registry : Pull images
 
 @enduml
 ```
@@ -241,8 +247,7 @@ topic2 -> customer_svc : Consume (cross-domain)
 | **Redis** | Sub-millisecond caching | Cache-aside pattern, TTL |
 | **PostgreSQL** | Advanced relational database | SQL, migrations |
 | **MongoDB** | Flexible document database | Document modeling |
-| **Harbor** | Enterprise container registry | RBAC, vulnerability scanning |
-| **Nexus** | Universal dependency cache | Proxy repos, artifact management |
+| **Docker Registry** | Enterprise container registry | RBAC, vulnerability scanning |
 | **Jenkins** | Most deployed CI/CD server | Jenkinsfile, pipelines |
 | **Terraform** | Declarative infrastructure as code | HCL, state management |
 | **Ansible** | Agentless configuration management | Playbooks, idempotency |

@@ -4,60 +4,26 @@
 
 ---
 
-## 01 — Deploy with Terraform
+## 01 — Deploy PostgreSQL on `db-node-1`
 
-Create `infra/07-postgresql/terraform/postgresql.tf`:
+Because our databases run across multiple dedicated Multipass VMs, we will deploy PostgreSQL directly onto `db-node-1` using Docker.
 
-```hcl
-resource "docker_image" "postgres" {
-  name = "postgres:16-alpine"
-}
-
-resource "docker_volume" "pgdata" {
-  name = "pgdata"
-}
-
-resource "docker_container" "postgres" {
-  name  = "postgres"
-  image = docker_image.postgres.image_id
-
-  ports {
-    internal = 5432
-    external = 5432
-  }
-
-  env = [
-    "POSTGRES_DB=customerdb",
-    "POSTGRES_USER=lab_admin",
-    "POSTGRES_PASSWORD=changeme_in_production",
-  ]
-
-  command = [
-    "postgres",
-    "-c", "shared_buffers=128MB",
-    "-c", "max_connections=20",
-  ]
-
-  volumes {
-    volume_name    = docker_volume.pgdata.name
-    container_path = "/var/lib/postgresql/data"
-  }
-
-  memory = 300
-
-  networks_advanced {
-    name = docker_network.lab_net.name
-  }
-
-  restart = "unless-stopped"
-}
-```
-
-### Apply
+Run the following command from the **Developer Desktop** to launch Postgres via SSH:
 
 ```bash
-cd infra/07-postgresql/terraform
-terraform init && terraform apply
+# Replace 10.202.73.32 with the actual IP of db-node-1
+ssh ubuntu@10.202.73.32 '
+  docker run -d \
+    --name postgres \
+    --restart unless-stopped \
+    -p 5432:5432 \
+    -e POSTGRES_DB=customerdb \
+    -e POSTGRES_USER=lab_admin \
+    -e POSTGRES_PASSWORD=changeme_in_production \
+    -v pgdata:/var/lib/postgresql/data \
+    postgres:16-alpine \
+    postgres -c shared_buffers=128MB -c max_connections=20
+'
 ```
 
 ---
@@ -65,7 +31,7 @@ terraform init && terraform apply
 ## 02 — Verify
 
 ```bash
-ssh datacenter "docker exec postgres psql -U lab_admin -d customerdb -c 'SELECT version();'"
+ssh ubuntu@10.202.73.32 "docker exec postgres psql -U lab_admin -d customerdb -c 'SELECT version();'"
 ```
 
 ---
@@ -73,7 +39,7 @@ ssh datacenter "docker exec postgres psql -U lab_admin -d customerdb -c 'SELECT 
 ## 03 — Create Initial Schema (Optional)
 
 ```bash
-ssh datacenter "docker exec -i postgres psql -U lab_admin -d customerdb" << 'SQL'
+ssh ubuntu@10.202.73.32 "docker exec -i postgres psql -U lab_admin -d customerdb" << 'SQL'
 CREATE TABLE IF NOT EXISTS customers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,

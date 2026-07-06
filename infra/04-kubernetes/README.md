@@ -1,82 +1,72 @@
-# Step 4 — Kubernetes (K3s on Datacenter)
+# Step 4 — Kubernetes (Multi-Node K3s)
 
-> Install K3s on the Datacenter (Lenovo laptop) and configure remote `kubectl` access from the Developer Desktop.
+> Install the K3s Control Plane on the `k8s-master` VM, join the `k8s-worker-1` VM to form a cluster, and configure remote `kubectl` access from your Developer Desktop.
 
 ---
 
-## 01 — Install K3s via Ansible
+## 01 — Install K3s Control Plane (Master)
 
-### Create the Playbook
-
-Create `infra/04-kubernetes/ansible/install-k3s.yml`:
-
-```yaml
----
-- name: Install K3s on Datacenter
-  hosts: datacenter
-  become: true
-  tasks:
-    - name: Install K3s
-      shell: |
-        curl -sfL https://get.k3s.io | sh -s - \
-          --write-kubeconfig-mode 644 \
-          --disable=servicelb \
-          --kube-apiserver-arg="--service-node-port-range=80-32767"
-      args:
-        creates: /usr/local/bin/k3s
-
-    - name: Wait for K3s to be ready
-      command: k3s kubectl get nodes
-      register: result
-      until: result.rc == 0
-      retries: 10
-      delay: 5
-
-    - name: Fetch kubeconfig
-      fetch:
-        src: /etc/rancher/k3s/k3s.yaml
-        dest: /tmp/k3s-config
-        flat: true
-
-    - name: Show node status
-      command: k3s kubectl get nodes -o wide
-      register: nodes
-
-    - name: Display
-      debug:
-        var: nodes.stdout_lines
-```
-
-### Run It
+Connect to your Developer Desktop and run the K3s installation script directly on the `k8s-master` VM using SSH:
 
 ```bash
-ansible-playbook -i inventory/hosts.yml infra/04-kubernetes/ansible/install-k3s.yml
+# Replace 10.202.73.92 with your actual k8s-master IP
+ssh ubuntu@10.202.73.92 "curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644 --disable=servicelb"
+```
+
+### Get the Join Token and IP
+To join the worker node, you need the master's IP address and its secure join token.
+
+```bash
+# Get the Join Token (run from Dev Desktop via SSH)
+ssh ubuntu@10.202.73.92 "sudo cat /var/lib/rancher/k3s/server/node-token"
 ```
 
 ---
 
-## 02 — Configure Remote kubectl
+## 02 — Join the Worker Node
 
-On the Developer Desktop:
+Now, execute the installation script inside the `k8s-worker-1` VM, passing it the URL and Token from the master:
 
 ```bash
-mkdir -p ~/.kube
-cp /tmp/k3s-config ~/.kube/config
+# Replace 10.202.73.146 with your actual k8s-worker-1 IP
+# Replace <MASTER_IP> and <NODE_TOKEN> with the values from Step 1
+ssh ubuntu@10.202.73.146 "curl -sfL https://get.k3s.io | K3S_URL=https://<MASTER_IP>:6443 K3S_TOKEN=<NODE_TOKEN> sh -"
+```
 
-# Replace 127.0.0.1 with the Datacenter's IP
-sed -i "s/127.0.0.1/<datacenter-ip>/g" ~/.kube/config
+---
 
-# Test
+## 03 — Configure Remote kubectl
+
+To manage this new cluster from your Developer Desktop, extract the `kubeconfig` file from the master VM.
+
+On the **Developer Desktop (Mac)**:
+
+```bash
+# Add a static route so your Dev Desktop can reach the internal Multipass VMs.
+# Replace <LENOVO_IP> with the Wi-Fi IP of your Lenovo laptop!
+# (If you already added this route during testing, you can skip this step)
+# sudo ip route add 10.202.73.0/24 via <LENOVO_IP>
+
+# SSH into the master node and grab the config (replace with its actual 10.202.73.x IP)
+ssh ubuntu@10.202.73.92 "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config
+
+# Edit the config file: Replace 127.0.0.1 with the k8s-master IP (e.g., 10.202.73.92)
+nano ~/.kube/config
+```
+
+### Test the Connection
+```bash
 kubectl get nodes
-kubectl get pods --all-namespaces
 ```
+*You should see both `k8s-master` and `k8s-worker-1` listed as `Ready`.*
 
 ---
 
-## 03 — Verify K3s Components
+## 04 — Verify K3s Components
+
+Ensure the cluster has fully initialized by checking the system pods:
 
 ```bash
-# All system pods should be Running
 kubectl get pods -n kube-system
 
 # Expected:
@@ -85,28 +75,12 @@ kubectl get pods -n kube-system
 
 ---
 
-## 04 — Install Metrics Server (for HPA)
-
-K3s typically includes metrics-server. Verify:
-
-```bash
-kubectl top nodes
-kubectl top pods --all-namespaces
-```
-
-If missing:
-```bash
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-```
-
----
-
 ## ✅ Success Criteria
 
-- [ ] K3s running on Datacenter (`kubectl get nodes` shows Ready)
-- [ ] Remote kubectl works from Developer Desktop
-- [ ] All kube-system pods are Running
-- [ ] `kubectl top nodes` returns metrics
+- [ ] Control Plane is running on `k8s-master`
+- [ ] `k8s-worker-1` has successfully joined the cluster
+- [ ] `kubectl get nodes` works from the Developer Desktop
+- [ ] Both nodes report a `Ready` status
 
 ---
 

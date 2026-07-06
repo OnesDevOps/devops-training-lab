@@ -4,56 +4,25 @@
 
 ---
 
-## 01 — Deploy with Terraform
+## 01 — Deploy MongoDB on `db-node-1`
 
-Create `infra/08-mongodb/terraform/mongodb.tf`:
+Because our databases run across multiple dedicated Multipass VMs, we will deploy MongoDB directly onto `db-node-1` using Docker.
 
-```hcl
-resource "docker_image" "mongodb" {
-  name = "mongo:7"
-}
-
-resource "docker_volume" "mongodata" {
-  name = "mongodata"
-}
-
-resource "docker_container" "mongodb" {
-  name  = "mongodb"
-  image = docker_image.mongodb.image_id
-
-  ports {
-    internal = 27017
-    external = 27017
-  }
-
-  env = [
-    "MONGO_INITDB_DATABASE=labdb",
-    "MONGO_INITDB_ROOT_USERNAME=lab_admin",
-    "MONGO_INITDB_ROOT_PASSWORD=changeme_in_production",
-  ]
-
-  command = ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
-
-  volumes {
-    volume_name    = docker_volume.mongodata.name
-    container_path = "/data/db"
-  }
-
-  memory = 400
-
-  networks_advanced {
-    name = docker_network.lab_net.name
-  }
-
-  restart = "unless-stopped"
-}
-```
-
-### Apply
+Run the following command from the **Developer Desktop** to launch MongoDB via SSH:
 
 ```bash
-cd infra/08-mongodb/terraform
-terraform init && terraform apply
+# Replace 10.202.73.32 with the actual IP of db-node-1
+ssh ubuntu@10.202.73.32 '
+  docker run -d \
+    --name mongodb \
+    --restart unless-stopped \
+    -p 27017:27017 \
+    -e MONGO_INITDB_ROOT_USERNAME=lab_admin \
+    -e MONGO_INITDB_ROOT_PASSWORD=changeme_in_production \
+    -v mongodata:/data/db \
+    mongo:7.0 \
+    --wiredTigerCacheSizeGB 0.25
+'
 ```
 
 ---
@@ -61,9 +30,7 @@ terraform init && terraform apply
 ## 02 — Verify
 
 ```bash
-ssh datacenter "docker exec mongodb mongosh \
-  --username lab_admin --password changeme_in_production \
-  --eval 'db.adminCommand({ping: 1})'"
+ssh ubuntu@10.202.73.32 "docker exec mongodb mongosh -u lab_admin -p changeme_in_production --authenticationDatabase admin --eval 'db.version()'"
 ```
 
 ---
@@ -71,13 +38,15 @@ ssh datacenter "docker exec mongodb mongosh \
 ## 03 — Create Initial Collection (Optional)
 
 ```bash
-ssh datacenter "docker exec mongodb mongosh \
-  --username lab_admin --password changeme_in_production \
-  labdb --eval '
-    db.createCollection(\"lab_results\");
-    db.lab_results.insertOne({test: \"connectivity\", status: \"ok\", ts: new Date()});
-    db.lab_results.find();
-  '"
+ssh ubuntu@10.202.73.32 "docker exec -i mongodb mongosh -u lab_admin -p changeme_in_production --authenticationDatabase admin" << 'JS'
+use labdb
+db.labs.insertOne({
+    name: "DevOps Training Lab",
+    type: "Environment",
+    status: "Active",
+    created_at: new Date()
+});
+JS
 ```
 
 ---

@@ -2,7 +2,7 @@
 
 > This document contains structured, hands-on exercises for new DevOps engineers. Each exercise builds on the previous one, progressively assembling the complete DevOps Training Lab from scratch.
 >
-> **GitHub Organization:** All application repositories are hosted at [https://github.com/OnesDevOps](https://github.com/OnesDevOps).
+> **Gitea Organization:** All application repositories are hosted at [http://192.168.8.80:3000/nisalatp](http://192.168.8.80:3000/nisalatp).
 
 ---
 

@@ -134,7 +134,7 @@ sudo usermod -aG docker $USER
 newgrp docker
 
 # kubectl
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/$(dpkg --print-architecture)/kubectl"
 sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 rm kubectl
 
@@ -159,8 +159,9 @@ sudo apt install -y openjdk-21-jre-headless
 
 ```bash
 # Add Jenkins repository
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key | sudo tee /etc/apt/keyrings/jenkins-keyring.asc > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
 sudo apt update
 sudo apt install -y jenkins
 
@@ -285,3 +286,21 @@ cd devops-training-lab
 ---
 
 > **Next →** [01 — Datacenter Prerequisites](../01-datacenter-prerequisites/)
+
+---
+
+## Appendix: Datacenter Networking (Lenovo Laptop)
+
+If your datacenter is a physical laptop on your desk, you need a stable IP address (`192.168.8.40` by default) so the Developer Workstation can always reach it via Ansible.
+
+**Option A: USB-C to USB-C Cable (Recommended)**
+If you connect a Thunderbolt/USB-C cable directly between the Developer Mac and the Datacenter laptop, it creates a highly secure, 10Gbps+ hardware link.
+- Assign `192.168.8.40` to the USB/Thunderbolt interface on the Datacenter laptop.
+- Assign `192.168.8.10` (or similar) to the Thunderbolt Bridge interface on your Mac.
+- **Benefits:** Immune to Wi-Fi drops, requires no router, and works anywhere.
+
+**Option B: Wi-Fi Static IP Binding**
+If you do not have a Thunderbolt cable, connect the Datacenter laptop to your home Wi-Fi.
+- In Ubuntu Settings → Wi-Fi, edit the properties for your home network.
+- Go to IPv4 settings, set it to **Manual**, and enter IP `192.168.8.40`, Netmask `255.255.255.0`, Gateway `192.168.8.1`.
+- **Benefits:** The static IP is saved *only* for this specific Wi-Fi network. If you take the laptop to a coffee shop, it will connect normally using DHCP.

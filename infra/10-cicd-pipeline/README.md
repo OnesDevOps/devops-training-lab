@@ -1,6 +1,6 @@
-# Step 10 — CI/CD Pipeline (Jenkins)
+# Step 10 — CI/CD Pipeline (Jenkins & GitOps)
 
-> Set up Jenkins on the Developer Desktop to automate the full build → push → deploy lifecycle. This is the capstone exercise.
+> Set up Jenkins on the Developer Desktop to automate the build → push → Git commit lifecycle. Argo CD will handle the final pull into the cluster.
 
 ---
 
@@ -20,11 +20,11 @@ systemctl status jenkins
 Go to **Manage Jenkins → Plugins → Available**. Install:
 
 - **Docker Pipeline** — build Docker images in Jenkinsfiles
-- **Kubernetes CLI** — run kubectl from pipelines
 - **Git** — source code management
 - **Pipeline** — Jenkinsfile support (usually pre-installed)
 
 Restart Jenkins after installation.
+*(Note: We no longer need the Kubernetes CLI plugin since we are using GitOps!)*
 
 ---
 
@@ -32,22 +32,14 @@ Restart Jenkins after installation.
 
 Go to **Manage Jenkins → Credentials → Global → Add Credentials**:
 
-### Harbor Registry Credentials
+### Gitea Credentials
+Since Jenkins needs to commit and push changes back to the Gitea manifests repository, you need to add your Gitea credentials.
 - **Kind:** Username with password
-- **ID:** `harbor-registry`
-- **Username:** `admin`
-- **Password:** (your Harbor password)
+- **ID:** `gitea-credentials`
+- **Username:** `admin` (or your Gitea username)
+- **Password:** (your Gitea password)
 
-### Datacenter SSH Key
-- **Kind:** SSH Username with private key
-- **ID:** `datacenter-ssh`
-- **Username:** (your datacenter user)
-- **Private key:** Enter directly → paste contents of `~/.ssh/devops_lab_key`
-
-### Kubeconfig
-- **Kind:** Secret file
-- **ID:** `kubeconfig`
-- **File:** Upload `~/.kube/config`
+*(Note: We no longer need the Kubeconfig credential in Jenkins since Jenkins does not talk to Kubernetes directly!)*
 
 ---
 
@@ -63,6 +55,7 @@ pipeline {
         REGISTRY = '<registry-ip>'
         IMAGE = "${REGISTRY}/devops-lab/customer-service"
         TAG = "${BUILD_NUMBER}"
+        GITEA_URL = "http://192.168.8.80:3000/admin"
     }
 
     stages {
@@ -85,35 +78,36 @@ pipeline {
         stage('Docker Build & Push') {
             steps {
                 dir('src/customer-service') {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'harbor-registry',
-                        usernameVariable: 'USER',
-                        passwordVariable: 'PASS'
-                    )]) {
-                        sh """
-                            docker login ${REGISTRY} -u ${USER} -p ${PASS}
-                            docker build -t ${IMAGE}:${TAG} .
-                            docker push ${IMAGE}:${TAG}
-                            docker tag ${IMAGE}:${TAG} ${IMAGE}:latest
-                            docker push ${IMAGE}:latest
-                        """
-                    }
+                    sh """
+                        docker build -t ${IMAGE}:${TAG} .
+                        docker push ${IMAGE}:${TAG}
+                        docker tag ${IMAGE}:${TAG} ${IMAGE}:latest
+                        docker push ${IMAGE}:latest
+                    """
                 }
             }
         }
 
-        stage('Deploy to K3s') {
+        stage('Update GitOps Manifests') {
             steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                withCredentials([usernamePassword(credentialsId: 'gitea-credentials', passwordVariable: 'GITEA_PASS', usernameVariable: 'GITEA_USER')]) {
                     sh """
-                        kubectl set image deployment/customer-service \
-                            customer-service=${IMAGE}:${TAG} \
-                            -n devops-lab \
-                            --kubeconfig=${KUBECONFIG}
-                        kubectl rollout status deployment/customer-service \
-                            -n devops-lab \
-                            --timeout=120s \
-                            --kubeconfig=${KUBECONFIG}
+                        # Clone the manifests repository
+                        git clone http://${GITEA_USER}:${GITEA_PASS}@192.168.8.80:3000/admin/devops-lab-manifests.git
+                        
+                        cd devops-lab-manifests
+                        
+                        # Configure Git
+                        git config user.email "jenkins@devopslab.local"
+                        git config user.name "Jenkins CI"
+                        
+                        # Update the image tag in the deployment file
+                        sed -i 's|image: ${IMAGE}:.*|image: ${IMAGE}:${TAG}|g' k8s/customer-service/deployment.yaml
+                        
+                        # Commit and push
+                        git add k8s/customer-service/deployment.yaml
+                        git commit -m "Update customer-service image to tag ${TAG}"
+                        git push origin main
                     """
                 }
             }
@@ -121,7 +115,7 @@ pipeline {
     }
 
     post {
-        success { echo '✅ Pipeline completed successfully!' }
+        success { echo '✅ Pipeline completed! Argo CD will now sync the cluster.' }
         failure { echo '❌ Pipeline failed.' }
     }
 }
@@ -135,9 +129,10 @@ pipeline {
 2. **Name:** `customer-service`
 3. **Pipeline Definition:** Pipeline script from SCM
 4. **SCM:** Git
-5. **Repository URL:** `https://github.com/OnesDevOps/devops-training-lab.git`
-6. **Script Path:** `src/customer-service/Jenkinsfile`
-7. **Save**
+5. **Repository URL:** `http://192.168.8.80:3000/admin/devops-lab-apps.git`
+6. **Credentials:** `gitea-credentials`
+7. **Script Path:** `src/customer-service/Jenkinsfile`
+8. **Save**
 
 Repeat for `lab-service` and `frontend` with adjusted paths.
 
@@ -146,51 +141,41 @@ Repeat for `lab-service` and `frontend` with adjusted paths.
 ## 06 — Run the Pipeline
 
 1. Click **Build Now** on the `customer-service` job
-2. Watch the stages execute: Build → Test → Docker Build & Push → Deploy
-3. Verify:
-
-```bash
-kubectl get pods -n devops-lab
-kubectl describe deployment customer-service -n devops-lab | grep Image
-```
+2. Watch the stages execute: Build → Test → Docker Build & Push → Update GitOps Manifests
+3. Verify in Gitea that the `devops-lab-manifests` repository has a new commit from Jenkins.
+4. Verify in Argo CD that it detected the commit and began syncing the new pods in the cluster!
 
 ---
 
-## 07 — Configure Git Webhooks (Optional)
+## 07 — Configure Gitea Webhooks
 
-For automatic builds on push:
+For automatic builds on code push:
 
-1. In your GitHub repo: **Settings → Webhooks → Add webhook**
-2. **Payload URL:** `http://<dev-desktop-ip>:8080/github-webhook/`
-3. **Content type:** `application/json`
-4. **Events:** Just the push event
-5. In Jenkins job config: Enable **GitHub hook trigger for GITScm polling**
+1. In your Gitea `devops-lab-apps` repo: **Settings → Webhooks → Add Webhook → Gitea**
+2. **Target URL:** `http://<dev-desktop-ip>:8080/gitea-webhook/post`
+3. **HTTP Method:** `POST`
+4. **Trigger On:** Push Events
+5. In your Jenkins job config: Enable **Poll SCM** or **Gitea webhook trigger**
 
 ---
 
 ## ✅ Success Criteria
 
-- [ ] Jenkins running with all required plugins
-- [ ] Credentials configured (Harbor, SSH, Kubeconfig)
-- [ ] Jenkinsfile created for each application
-- [ ] Pipeline runs successfully: build → push → deploy
-- [ ] New image versions visible in Harbor after each build
-- [ ] K3s deployment updated automatically
+- [ ] Jenkins running and connected to Gitea
+- [ ] Pipeline runs successfully and pushes a new image to Docker Registry
+- [ ] Jenkins automatically commits the new image tag to the Gitea manifests repository
+- [ ] Argo CD automatically detects the Git change and deploys the new image to K3s
 
 ---
 
 ## 🎓 Lab Complete!
 
-Congratulations! You have:
+Congratulations! You have built a true, enterprise-grade GitOps architecture:
 
 - [x] Provisioned a Developer Desktop with all DevOps tools
-- [x] Configured a remote Datacenter with Docker
-- [x] Deployed a private Container Registry (Harbor)
-- [x] Set up a Dependency Cache (Nexus)
-- [x] Installed and managed a Kubernetes cluster (K3s)
-- [x] Deployed stateful data services (Kafka, Redis, PostgreSQL, MongoDB)
-- [x] Built, containerized, and deployed 3 microservices
-- [x] Automated everything with Jenkins CI/CD pipelines
-- [x] Understood networking between K8s pods and native Docker containers
-
-> **You now have a fully operational enterprise-grade microservices lab.** 🚀
+- [x] Configured a remote Datacenter with Multipass VMs
+- [x] Deployed a private Docker Registry & Dependency Cache
+- [x] Deployed an on-premises Gitea server for Source Control
+- [x] Installed and managed a Kubernetes cluster (K3s) with HPA
+- [x] Automated CI with Jenkins
+- [x] Automated CD with Argo CD (GitOps)

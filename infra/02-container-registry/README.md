@@ -18,12 +18,10 @@
 
 ---
 
-## 01 — Create the Debian VM in UTM
+## 01 — Create the Ubuntu VM in UTM
 
-1. Download Debian 12 **netinst** ISO from [debian.org/distrib](https://www.debian.org/distrib/)
-2. In UTM: **Create New VM → Virtualize → Linux**
-3. Assign: 1 GB RAM, 1 core, 80 GB disk
-4. Boot from ISO and follow the installer (minimal install, no desktop environment)
+1. Clone the DevComputer VM or create a new Ubuntu Server VM in UTM
+2. Boot the VM and configure the static IP to `192.168.8.60` (as done previously)
 
 ### Post-Install — Install Docker
 
@@ -33,8 +31,8 @@ sudo apt update && sudo apt install -y ca-certificates curl gnupg
 
 # Add Docker repository
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 sudo usermod -aG docker $USER
@@ -52,95 +50,52 @@ ip addr show eth0 | grep "inet "
 
 ---
 
-## 02 — Deploy Harbor
+## 02 — Deploy Docker Registry
 
-Harbor is an enterprise container registry with authentication, RBAC, and vulnerability scanning.
+Since Harbor's official images are currently AMD64-only, we use the official lightweight Docker Registry (`registry:2`) for ARM64 compatibility on Apple Silicon.
 
-### 2.1 Download Harbor Installer
+### 2.1 Start the Registry
 
-```bash
-cd /tmp
-curl -sL https://github.com/goharbor/harbor/releases/download/v2.11.0/harbor-offline-installer-v2.11.0.tgz -o harbor.tgz
-tar xzf harbor.tgz
-cd harbor
-```
-
-### 2.2 Configure Harbor
+Run the following command to start the registry in the background. It will automatically restart if the VM reboots.
 
 ```bash
-cp harbor.yml.tmpl harbor.yml
-vi harbor.yml
+docker run -d \
+  -p 80:5000 \
+  --restart=always \
+  --name registry \
+  -v /data/registry:/var/lib/registry \
+  registry:2
 ```
 
-Edit these fields:
+### 2.2 Verify
 
-```yaml
-hostname: <registry-ip>
-
-# For lab, use HTTP (disable HTTPS block)
-http:
-  port: 80
-
-# Comment out the entire https: block
-# https:
-#   port: 443
-#   certificate: ...
-#   private_key: ...
-
-harbor_admin_password: ChangeMeNow!
-
-data_volume: /data/harbor
-```
-
-### 2.3 Install Harbor
-
+Verify the container is running:
 ```bash
-./install.sh
+docker ps
 ```
 
-This pulls Harbor's Docker images and starts all containers (~5-8 images: core, portal, db, redis, registry, jobservice, etc.).
-
-### 2.4 Verify
-
+You can test the API endpoint to ensure it is responding:
 ```bash
-docker ps   # Should show ~8 Harbor containers
-curl -s http://localhost/api/v2.0/health | python3 -m json.tool
+curl -s http://localhost/v2/_catalog
 ```
-
-Open `http://<registry-ip>` in your browser:
-- **Username:** `admin`
-- **Password:** `ChangeMeNow!` (change it on first login)
+It should return an empty JSON object: `{"repositories":[]}`.
 
 ---
 
-## 03 — Create a Project for Lab Images
-
-1. Login to Harbor UI → **Projects → New Project**
-2. **Name:** `devops-lab`
-3. **Access Level:** Private
-4. Click **OK**
-
-All lab images will be pushed as: `<registry-ip>/devops-lab/<image>:<tag>`
-
----
-
-## 04 — Configure Clients to Use This Registry
+## 03 — Configure Clients to Use This Registry
 
 ### On the Developer Desktop (VM 1)
+
+Since we are running the registry on port 80 without HTTPS (for the lab), we must configure Docker clients to trust it as an insecure registry.
 
 ```bash
 # Trust the insecure (HTTP) registry
 sudo tee /etc/docker/daemon.json << EOF
 {
-  "insecure-registries": ["<registry-ip>:80", "<registry-ip>"]
+  "insecure-registries": ["192.168.8.60:80", "192.168.8.60"]
 }
 EOF
 sudo systemctl restart docker
-
-# Test login
-docker login <registry-ip>
-# Username: admin
-# Password: <your-harbor-password>
 ```
 
 ### On the Datacenter (Lenovo)
@@ -164,11 +119,6 @@ mirrors:
   "<registry-ip>":
     endpoint:
       - "http://<registry-ip>"
-configs:
-  "<registry-ip>":
-    auth:
-      username: admin
-      password: <your-harbor-password>
 EOF
 sudo systemctl restart k3s
 ```
@@ -183,7 +133,7 @@ docker pull alpine:latest
 docker tag alpine:latest <registry-ip>/devops-lab/alpine:test
 docker push <registry-ip>/devops-lab/alpine:test
 
-# Verify in Harbor UI → Projects → devops-lab → Repositories
+# Verify using the curl command we ran earlier
 ```
 
 ---
@@ -191,10 +141,9 @@ docker push <registry-ip>/devops-lab/alpine:test
 ## ✅ Success Criteria
 
 - [ ] Debian VM running with Docker
-- [ ] Harbor accessible at `http://<registry-ip>`
-- [ ] `devops-lab` project created (private)
-- [ ] Developer Desktop can `docker push` to Harbor
-- [ ] Datacenter can `docker pull` from Harbor
+- [ ] Docker Registry accessible via curl API
+- [ ] Developer Desktop can `docker push` to registry
+- [ ] Datacenter can `docker pull` from registry
 - [ ] K3s registries.yaml configured
 
 ---

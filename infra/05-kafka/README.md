@@ -4,78 +4,52 @@
 
 ---
 
-## 01 — Deploy with Terraform
+## 01 — Deploy Kafka on `db-node-2`
 
-Create `infra/05-kafka/terraform/kafka.tf`:
+Because our databases run across multiple dedicated Multipass VMs, we will deploy Kafka directly onto `db-node-2` using Docker.
 
-```hcl
-resource "docker_image" "kafka" {
-  name = "apache/kafka:latest"
-}
-
-resource "docker_volume" "kafka_data" {
-  name = "kafka-data"
-}
-
-resource "docker_container" "kafka" {
-  name  = "kafka"
-  image = docker_image.kafka.image_id
-
-  ports {
-    internal = 9092
-    external = 9092
-  }
-
-  env = [
-    "KAFKA_NODE_ID=1",
-    "KAFKA_PROCESS_ROLES=broker,controller",
-    "KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093",
-    "KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${var.datacenter_ip}:9092",
-    "KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER",
-    "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT",
-    "KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093",
-    "KAFKA_LOG_DIRS=/var/lib/kafka/data",
-    "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1",
-    "KAFKA_HEAP_OPTS=-Xmx512m -Xms512m",
-  ]
-
-  volumes {
-    volume_name    = docker_volume.kafka_data.name
-    container_path = "/var/lib/kafka/data"
-  }
-
-  memory = 1024
-
-  networks_advanced {
-    name = docker_network.lab_net.name
-  }
-
-  restart = "unless-stopped"
-}
-```
-
-### Apply
+Run the following command from the **Developer Desktop** to launch Kafka in KRaft mode via SSH:
 
 ```bash
-cd infra/05-kafka/terraform
-terraform init && terraform apply
+# Replace 10.202.73.133 with the actual IP of db-node-2
+ssh ubuntu@10.202.73.133 '
+  docker run -d \
+    --name kafka \
+    --restart unless-stopped \
+    --network host \
+    -e KAFKA_NODE_ID=1 \
+    -e KAFKA_PROCESS_ROLES=broker,controller \
+    -e KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093 \
+    -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://10.202.73.133:9092 \
+    -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+    -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+    -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093 \
+    -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+    -e KAFKA_HEAP_OPTS="-Xmx512m -Xms512m" \
+    -v kafka_data:/var/lib/kafka/data \
+    apache/kafka:latest
+'
 ```
 
 ---
 
 ## 02 — Create Topics
 
+## 02 — Create Topics
+
+Create the topics required by our microservices:
+
 ```bash
-ssh datacenter "docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+ssh ubuntu@10.202.73.133 "docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --topic customer-events --partitions 1 --replication-factor 1"
 
-ssh datacenter "docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+ssh ubuntu@10.202.73.133 "docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create --topic lab-events --partitions 1 --replication-factor 1"
 
 # Verify
-ssh datacenter "docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+ssh ubuntu@10.202.73.133 "docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 --list"
 ```
 
@@ -85,11 +59,11 @@ ssh datacenter "docker exec kafka /opt/kafka/bin/kafka-topics.sh \
 
 ```bash
 # Terminal 1 — Consumer
-ssh datacenter "docker exec -it kafka /opt/kafka/bin/kafka-console-consumer.sh \
+ssh ubuntu@10.202.73.133 "docker exec -it kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic customer-events --from-beginning"
 
 # Terminal 2 — Producer
-ssh datacenter "docker exec -it kafka /opt/kafka/bin/kafka-console-producer.sh \
+ssh ubuntu@10.202.73.133 "docker exec -it kafka /opt/kafka/bin/kafka-console-producer.sh \
   --bootstrap-server localhost:9092 --topic customer-events"
 # Type a message and hit Enter — it should appear in Terminal 1
 ```

@@ -1,73 +1,67 @@
-# Step 1 — Datacenter Prerequisites
+# Step 1 — Datacenter Prerequisites (Hypervisor)
 
-> Prepare the Ubuntu datacenter server by configuring the system and installing Docker. All tasks are executed remotely from your MacBook using Ansible.
+> Prepare the Lenovo Datacenter by installing the Multipass hypervisor and provisioning our fleet of 4 Virtual Machines.
 
 ---
 
 ## Overview
 
 In this step you will:
-1. Configure system settings (timezone, sysctl, firewall)
-2. Install Docker Engine
-3. Create the shared Docker network for native services
-4. Verify everything is ready
+1. Install Multipass on the Lenovo physical host
+2. Provision the Kubernetes VMs (`k8s-master`, `k8s-worker-1`)
+3. Provision the Database VMs (`db-node-1`, `db-node-2`)
 
 ---
 
-## 01 — System Setup
+## 01 — Install Multipass
 
-### What You'll Configure
-
-| Setting | Purpose |
-|---------|---------|
-| Timezone | Consistent timestamps across logs |
-| Swap | Disable for Kubernetes compatibility |
-| Firewall (UFW) | Open required ports |
-| sysctl | Kernel parameters for Kafka and containers |
-
-### Run the Playbook
+Connect to the Lenovo Datacenter and install Multipass via Snap:
 
 ```bash
-ansible-playbook -i inventory/hosts.yml infra/01-datacenter-prerequisites/ansible/playbooks/01-system-setup.yml
+ssh datacenter "sudo snap install multipass"
 ```
 
 ---
 
-## 02 — Install Docker
+## 02 — Provision the VM Fleet
 
-### Run the Playbook
-
-```bash
-ansible-playbook -i inventory/hosts.yml infra/01-datacenter-prerequisites/ansible/playbooks/02-install-docker.yml
-```
-
-### Verify Docker Installation
+We will carve up the Lenovo's 16 cores and 16GB of RAM into 4 distinct servers. Run these commands on the Datacenter to build your new fleet:
 
 ```bash
-ssh datacenter "docker --version && docker ps && echo 'Docker OK'"
+# 1. The Kubernetes Control Plane (1 CPU, 1GB RAM)
+ssh datacenter "multipass launch -n k8s-master -c 1 -m 1G -d 10G"
+
+# 2. The Kubernetes Worker Node for Microservices (2 CPU, 2GB RAM)
+ssh datacenter "multipass launch -n k8s-worker-1 -c 2 -m 2G -d 15G"
+
+# 3. Database Cluster Node 1 (2 CPU, 2GB RAM)
+ssh datacenter "multipass launch -n db-node-1 -c 2 -m 2G -d 15G"
+
+# 4. Database Cluster Node 2 (2 CPU, 2.5GB RAM)
+ssh datacenter "multipass launch -n db-node-2 -c 2 -m 2.5G -d 15G"
 ```
+
+*(This will take a few minutes as it downloads the latest Ubuntu image and creates the virtual hardware).*
 
 ---
 
-## 03 — Create Docker Network
+## 03 — Verify the Fleet
 
-The shared `devops-lab-net` bridge network must exist before deploying any native services:
+List the running virtual machines to confirm they are online and note their IP addresses:
 
 ```bash
-ssh datacenter "docker network create devops-lab-net && docker network ls"
+ssh datacenter "multipass list"
 ```
-
-> This network is used by Kafka, Redis, PostgreSQL, and MongoDB containers to communicate with each other.
 
 ---
 
 ## ✅ Success Criteria
 
-- [ ] System settings applied (timezone, sysctl, swap disabled)
-- [ ] Firewall ports open (22, 80, 443, 5432, 6379, 6443, 9092, 27017)
-- [ ] Docker installed and running
-- [ ] `devops-lab-net` Docker network created
-- [ ] Your user can run `docker` without `sudo`
+- [ ] Multipass is installed on the Lenovo host
+- [ ] `k8s-master` VM is Running
+- [ ] `k8s-worker-1` VM is Running
+- [ ] `db-node-1` VM is Running
+- [ ] `db-node-2` VM is Running
 
 ---
 

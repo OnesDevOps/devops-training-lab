@@ -1,6 +1,6 @@
 # Step 9 — Deploy Applications to K3s
 
-> Build Docker images for all three applications, push them to the private Harbor registry, and deploy them to the K3s cluster on the Datacenter.
+> Build Docker images for all three applications, push them to the private Docker Registry, and deploy them to the K3s cluster on the Datacenter.
 
 ---
 
@@ -31,7 +31,7 @@ docker build -t <registry-ip>/devops-lab/lab-service:1.0.0 .
 
 ---
 
-## 02 — Push to Harbor
+## 02 — Push to Docker Registry
 
 ```bash
 docker login <registry-ip>
@@ -41,7 +41,11 @@ docker push <registry-ip>/devops-lab/customer-service:1.0.0
 docker push <registry-ip>/devops-lab/lab-service:1.0.0
 ```
 
-Verify in Harbor UI → Projects → devops-lab → 3 repositories should appear.
+Verify by querying the registry API:
+```bash
+curl -s http://<registry-ip>/v2/_catalog
+```
+You should see all 3 repositories listed in the JSON response.
 
 ---
 
@@ -338,12 +342,93 @@ curl http://<datacenter-ip>/api/labs
 
 ---
 
+## 05 — Configure Horizontal Pod Autoscaler (HPA)
+
+To ensure high availability and demonstrate autoscaling, we will deploy an HPA policy for each microservice so they scale between 1 and 2 pods based on CPU usage.
+
+Apply the following manifest:
+
+```yaml
+# infra/09-deploy-applications/k8s/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend-hpa
+  namespace: devops-lab
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: customer-service-hpa
+  namespace: devops-lab
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: customer-service
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: lab-service-hpa
+  namespace: devops-lab
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: lab-service
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+```
+
+```bash
+kubectl apply -f infra/09-deploy-applications/k8s/hpa.yaml
+kubectl get hpa -n devops-lab
+```
+
+---
+
 ## ✅ Success Criteria
 
-- [ ] All 3 images built and pushed to Harbor
+- [ ] All 3 images built and pushed to Docker Registry
 - [ ] All 3 deployments running in `devops-lab` namespace
 - [ ] Ingress routing `/`, `/api/customers`, `/api/labs` correctly
-- [ ] HPA configured for each deployment
+- [ ] HPA configured and running for all 3 deployments
 - [ ] Applications connecting to their data stores
+- [ ] Angular UI loads in browser
+- [ ] UI connects to Java API (Customers load)
+- [ ] UI connects to .NET API (Labs load)
+
+---
 
 > **Next →** [10 — CI/CD Pipeline](../10-cicd-pipeline/)
