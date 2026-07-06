@@ -17,6 +17,8 @@
 9. [Jenkins](#29-jenkins)
 10. [Terraform](#210-terraform)
 11. [Ansible](#211-ansible)
+12. [Harbor — Container Registry](#212-harbor--container-registry)
+13. [Nexus — Dependency Cache](#213-nexus--dependency-cache)
 
 ---
 
@@ -83,10 +85,10 @@ frame "K3s Cluster (Single Node)" as k3s {
 
 ### Key Configuration Points
 
-- **Single-node mode:** Both server and agent run on the same Ubuntu host.
+- **Single-node mode:** Both server and agent run on the same Datacenter host (Lenovo laptop).
 - **Traefik Ingress:** Pre-installed. Routes external traffic to pods based on path rules.
 - **Containerd:** The container runtime. K3s does NOT use Docker for running pods.
-- **`kubeconfig`:** Located at `/etc/rancher/k3s/k3s.yaml`. Copy this to your MacBook for remote `kubectl` access.
+- **`kubeconfig`:** Located at `/etc/rancher/k3s/k3s.yaml`. Copy this to your Developer Desktop VM for remote `kubectl` access.
 
 ### Resource Limits
 
@@ -316,7 +318,7 @@ Traditionally, Kafka required **Apache ZooKeeper** for cluster coordination (lea
 
 title Kafka (KRaft Mode) — Deployment
 
-node "Ubuntu Data Center" as dc {
+node "Datacenter (Lenovo)" as dc {
     
     rectangle "Docker Container: Kafka" as kafka_container {
         component [Kafka Broker\n+ KRaft Controller\n(Combined Mode)] as broker
@@ -438,11 +440,11 @@ t1 --> ls : Consume customer-events
 
 ### Role in This Architecture
 
-- Runs on the **MacBook** (developer workstation).
+- Runs on the **Developer Desktop VM (Ubuntu)**.
 - Watches Git repositories for changes.
-- Builds Docker images for all three applications.
-- Pushes images to a Docker registry (Docker Hub or a local registry).
-- Deploys updated manifests to the K3s cluster on the Ubuntu host via remote `kubectl`.
+- Builds Docker images for all three applications (using dependencies cached in Nexus).
+- Pushes images to the **Harbor Container Registry**.
+- Deploys updated manifests to the K3s cluster on the Datacenter via remote `kubectl`.
 
 ### Pipeline Overview (PlantUML)
 
@@ -456,16 +458,16 @@ title Jenkins CI/CD Pipeline — Per Application
 start
 :Push code to\nGit repository;
 
-|Jenkins (MacBook)|
+|Jenkins (Dev Desktop)|
 :Detect change\n(Webhook / Poll SCM);
 :Checkout source code;
-:Run unit tests;
+:Run unit tests\n(via Nexus Cache);
 :Build Docker image\n(docker build);
-:Push image to\nDocker Registry;
+:Push image to\nHarbor Registry;
 :Apply K8s manifests\n(kubectl apply -f);
 
-|K3s (Ubuntu)|
-:Pull new image\nfrom registry;
+|K3s (Datacenter)|
+:Pull new image\nfrom Harbor;
 :Rolling update\nof Deployment pods;
 stop
 
@@ -482,8 +484,8 @@ stop
 
 ### Role in This Architecture
 
-- Runs on the **MacBook**.
-- Provisions Docker containers on the remote Ubuntu host (using the Docker provider over SSH/TCP).
+- Runs on the **Developer Desktop VM**.
+- Provisions Docker containers on the remote Datacenter (using the Docker provider over SSH/TCP).
 - Manages the lifecycle of Kafka, Redis, PostgreSQL, and MongoDB containers.
 - Manages Docker volumes and networks.
 
@@ -530,8 +532,8 @@ redis --> v4
 
 ### Role in This Architecture
 
-- Runs on the **MacBook**.
-- Installs Docker and K3s on the Ubuntu host.
+- Runs on the **Developer Desktop VM**.
+- Installs Docker and K3s on the Datacenter.
 - Configures system settings (sysctl, firewall, etc.).
 - Can be combined with Terraform or used independently for configuration management.
 
@@ -548,6 +550,36 @@ redis --> v4
 | Template configuration files | ❌ | ✅ |
 
 > **Rule of Thumb:** Use **Terraform** for _provisioning_ (creating/destroying resources). Use **Ansible** for _configuration_ (installing software, editing files, managing state).
+
+---
+
+## 2.12 Harbor — Container Registry
+
+### What Is It?
+
+**Harbor** is an open-source, trusted cloud-native container registry that stores, signs, and scans content. It provides enterprise-level security, identity, and management features.
+
+### Role in This Architecture
+
+- Runs on a dedicated **Debian 12 Minimal VM** hosted in UTM on the MacBook.
+- Acts as the central, private storage for all Docker images built by Jenkins.
+- The K3s cluster on the Datacenter pulls application images exclusively from this registry.
+- Ensures all application code and built artifacts remain completely internal and confidential.
+
+---
+
+## 2.13 Nexus — Dependency Cache
+
+### What Is It?
+
+**Sonatype Nexus Repository Manager (OSS)** is a repository manager that caches dependencies from public repositories (Maven Central, npmjs, NuGet Gallery) locally.
+
+### Role in This Architecture
+
+- Runs on a dedicated **Debian 12 Minimal VM** hosted in UTM on the MacBook.
+- Serves as a transparent caching proxy for the Developer Desktop VM during Jenkins builds.
+- Drastically speeds up build times by serving cached Java `.jar`s, Node `.tgz` modules, and .NET `.nupkg`s over the local network instead of the internet.
+- Provides resilience in case upstream package registries experience downtime.
 
 ---
 
