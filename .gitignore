@@ -1,0 +1,12 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Ignore nested application repos
+src/frontend/
+src/customer-service/
+src/lab-service/

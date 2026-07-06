@@ -1,0 +1,77 @@
+---
+- name: System Setup — Datacenter
+  hosts: datacenter
+  become: true
+  tasks:
+    - name: Set timezone
+      community.general.timezone:
+        name: Asia/Colombo
+
+    - name: Disable swap (required for Kubernetes)
+      command: swapoff -a
+      changed_when: false
+
+    - name: Remove swap from fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: '\sswap\s'
+        state: absent
+
+    - name: Configure sysctl for containers and Kafka
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      loop:
+        - { key: "net.bridge.bridge-nf-call-iptables", value: "1" }
+        - { key: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+        - { key: "net.ipv4.ip_forward", value: "1" }
+        - { key: "vm.max_map_count", value: "262144" }  # Required for Kafka
+
+    - name: Load br_netfilter kernel module
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Ensure br_netfilter loads on boot
+      copy:
+        content: "br_netfilter"
+        dest: /etc/modules-load.d/br_netfilter.conf
+
+    - name: Install UFW firewall
+      apt:
+        name: ufw
+        state: present
+        update_cache: true
+
+    - name: Allow required ports through firewall
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "22"      # SSH
+        - "80"      # HTTP / Traefik
+        - "443"     # HTTPS / Traefik
+        - "5432"    # PostgreSQL
+        - "6379"    # Redis
+        - "6443"    # K3s API Server
+        - "9092"    # Kafka
+        - "27017"   # MongoDB
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+        policy: allow
+
+    - name: Install common utilities
+      apt:
+        name:
+          - curl
+          - wget
+          - htop
+          - net-tools
+          - jq
+          - unzip
+        state: present
