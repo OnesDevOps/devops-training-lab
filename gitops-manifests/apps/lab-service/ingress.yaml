@@ -1,0 +1,22 @@
+# An Ingress exposes HTTP and HTTPS routes from outside the cluster to Services within the cluster.
+# It acts as a smart reverse-proxy and API Gateway.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lab-service
+  annotations:
+    # Tells the built-in Traefik Ingress Controller to handle this routing rule
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+  - http:
+      paths:
+      # If a user visits http://<cluster-ip>/api/labs...
+      - path: /api/labs
+        pathType: Prefix
+        backend:
+          # ...route their traffic to the lab-service on port 5000!
+          service:
+            name: lab-service
+            port:
+              number: 5000

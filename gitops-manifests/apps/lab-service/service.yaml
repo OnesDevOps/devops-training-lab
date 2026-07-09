@@ -1,0 +1,18 @@
+# A Service creates a stable internal IP address and DNS name for your Pods.
+# Even if Pods die and are recreated with new IPs, this Service IP remains constant.
+apiVersion: v1
+kind: Service
+metadata:
+  name: lab-service
+spec:
+  # The selector routes traffic to any Pod that has this matching label
+  selector:
+    app: lab-service
+  ports:
+    - protocol: TCP
+      # The port this service will be exposed on inside the cluster
+      port: 5000
+      # The port the actual container is listening on (must match containerPort in deployment.yaml)
+      targetPort: 5000
+  # ClusterIP means this service is only accessible from INSIDE the Kubernetes cluster
+  type: ClusterIP

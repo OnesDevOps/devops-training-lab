@@ -1,0 +1,49 @@
+# A Deployment manages a set of identical Pods (your application).
+# It ensures that the specified number of Pods are running and handles rolling updates.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # The name of this deployment
+  name: customer-service
+  labels:
+    app: customer-service
+spec:
+  # How many identical copies (Pods) of this application to run initially
+  replicas: 1
+  # The selector tells the Deployment which Pods belong to it
+  selector:
+    matchLabels:
+      app: customer-service
+  # The template describes what the Pods will look like
+  template:
+    metadata:
+      labels:
+        # These labels must match the selector above!
+        app: customer-service
+    spec:
+      containers:
+      - name: customer-service
+        # The Docker image to run. 
+        # Note: DOCKER_REGISTRY_IP must be replaced with the actual IP of your private registry (VM 2).
+        image: DOCKER_REGISTRY_IP:80/customer-service:latest
+        # Always pull the latest image tag when starting a new pod
+        imagePullPolicy: Always
+        ports:
+        # The port your application listens on inside the container
+        - containerPort: 8080
+        # Resource constraints to ensure this app doesn't consume all node memory/CPU
+        resources:
+          requests: # Minimum guaranteed resources
+            cpu: 100m
+            memory: 256Mi
+          limits: # Maximum allowed resources before getting throttled or killed
+            cpu: 500m
+            memory: 512Mi
+        # Environment variables passed to your application
+        env:
+        # Connects the Spring Boot app to the PostgreSQL database on the Datacenter
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:postgresql://db-node-1:5432/customers"
+        # Connects the app to the Kafka broker on the Datacenter
+        - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+          value: "db-node-2:9092"
