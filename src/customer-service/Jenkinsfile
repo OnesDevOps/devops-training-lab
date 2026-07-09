@@ -61,16 +61,20 @@ pipeline {
                         git config --global user.email "jenkins@devopslab.local"
                         git config --global user.name "Jenkins CI"
                         
-                        # 2. Clone the GitOps repository where our Kubernetes YAML files live
-                        git clone "http://${GITEA_USER}:${GITEA_PASS}@${GITEA_HOST}/${GITEA_USER}/devops-lab-manifests.git"
+                        # 2. Setup GIT_ASKPASS to securely pass the password without URL-encoding issues
+                        echo '#!/bin/sh' > askpass.sh
+                        echo 'echo "$GITEA_PASS"' >> askpass.sh
+                        chmod +x askpass.sh
+                        export GIT_ASKPASS=$(pwd)/askpass.sh
+                        
+                        # 3. Clone the GitOps repository where our Kubernetes YAML files live
+                        git clone "http://${GITEA_USER}@${GITEA_HOST}/${GITEA_USER}/devops-lab-manifests.git"
                         cd devops-lab-manifests
                         
-                        # 3. Use 'sed' (a Linux text editor tool) to magically find the old Docker image tag 
-                        # in the deployment.yaml file, and replace it with the NEW image tag we just built!
+                        # 4. Use 'sed' to replace the old Docker image tag with the new one
                         sed -i "s|image: .*|image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}|g" apps/${IMAGE_NAME}/deployment.yaml
                         
-                        # 4. Commit and push the updated YAML file back to Gitea.
-                        # Argo CD will see this change and automatically deploy it to the Kubernetes cluster!
+                        # 5. Commit and push the updated YAML file back to Gitea
                         git add apps/${IMAGE_NAME}/deployment.yaml
                         git commit -m "Update ${IMAGE_NAME} image to ${BUILD_NUMBER} [skip ci]" || echo "No changes"
                         git push origin main
