@@ -19,7 +19,16 @@ pipeline {
     // Stages are the major steps in your pipeline
     stages {
         
-        // Stage 1: Package the compiled Java app into a Docker container
+        // Stage 1: Build the Java application using Maven
+        stage('Build & Test') {
+            steps {
+                dir('src/customer-service') {
+                    sh 'mvn clean package'
+                }
+            }
+        }
+
+        // Stage 2: Package the compiled Java app into a Docker container
         stage('Build Image') {
             steps {
                 script {
