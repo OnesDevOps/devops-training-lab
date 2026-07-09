@@ -27,7 +27,7 @@ pipeline {
                     // The first stage runs 'npm install' and 'npm run build'.
                     // The second stage copies the built HTML/JS files into an NGINX web server.
                     // We tag the image with the unique Jenkins BUILD_NUMBER (e.g. frontend:14)
-                    dockerImage = docker.build("${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}")
+                    dockerImage = docker.build("${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}", "src/${IMAGE_NAME}")
                 }
             }
         }

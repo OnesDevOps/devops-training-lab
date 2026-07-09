@@ -19,22 +19,13 @@ pipeline {
     // Stages are the major steps in your pipeline
     stages {
         
-        // Stage 1: Build the Java application using Maven
-        stage('Build & Test') {
-            steps {
-                // 'sh' executes a shell command on the Jenkins worker
-                // We skip tests for now until the mock database is fully configured
-                sh 'mvn clean package -DskipTests'
-            }
-        }
-
-        // Stage 2: Package the compiled Java app into a Docker container
+        // Stage 1: Package the compiled Java app into a Docker container
         stage('Build Image') {
             steps {
                 script {
                     // This uses the Jenkins Docker Plugin to build the image defined in the Dockerfile
                     // We tag the image with the unique Jenkins BUILD_NUMBER (e.g. customer-service:14)
-                    dockerImage = docker.build("${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}")
+                    dockerImage = docker.build("${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}", "src/${IMAGE_NAME}")
                 }
             }
         }
