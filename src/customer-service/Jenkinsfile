@@ -23,7 +23,7 @@ pipeline {
         stage('Build & Test') {
             steps {
                 dir('src/customer-service') {
-                    sh 'mvn clean package'
+                    sh 'mvn clean package -e > mvn.log 2>&1 || (tail -n 150 mvn.log && exit 1)'
                 }
             }
         }
