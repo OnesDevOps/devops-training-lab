@@ -56,25 +56,25 @@ pipeline {
             steps {
                 // This block securely injects the Gitea username and password as environment variables
                 withCredentials([usernamePassword(credentialsId: "${GITEA_CREDS_ID}", passwordVariable: 'GITEA_PASS', usernameVariable: 'GITEA_USER')]) {
-                    sh """
+                    sh '''
                         # 1. Configure git so the commit has an author
                         git config --global user.email "jenkins@devopslab.local"
                         git config --global user.name "Jenkins CI"
                         
                         # 2. Clone the GitOps repository where our Kubernetes YAML files live
-                        git clone http://${GITEA_USER}:${GITEA_PASS}@${GITEA_HOST}/${GITEA_USER}/devops-lab-manifests.git
+                        git clone "http://${GITEA_USER}:${GITEA_PASS}@${GITEA_HOST}/${GITEA_USER}/devops-lab-manifests.git"
                         cd devops-lab-manifests
                         
                         # 3. Use 'sed' (a Linux text editor tool) to magically find the old Docker image tag 
                         # in the deployment.yaml file, and replace it with the NEW image tag we just built!
-                        sed -i 's|image: .*|image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}|g' apps/${IMAGE_NAME}/deployment.yaml
+                        sed -i "s|image: .*|image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}|g" apps/${IMAGE_NAME}/deployment.yaml
                         
                         # 4. Commit and push the updated YAML file back to Gitea.
                         # Argo CD will see this change and automatically deploy it to the Kubernetes cluster!
                         git add apps/${IMAGE_NAME}/deployment.yaml
                         git commit -m "Update ${IMAGE_NAME} image to ${BUILD_NUMBER} [skip ci]" || echo "No changes"
                         git push origin main
-                    """
+                    '''
                 }
             }
         }
