@@ -6,7 +6,4 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Ignore nested application repos
-src/frontend/
-src/customer-service/
-src/lab-service/
+
