@@ -2,7 +2,8 @@
 
 > Architecture and design documentation for the DevOps Training Lab.
 >
-> **Gitea Organization:** [http://192.168.8.80:3000/nisalatp](http://192.168.8.80:3000/nisalatp) — All source code repositories live here on our local Gitea server.
+> **Source Code (GitHub):** [https://github.com/OnesDevOps](https://github.com/OnesDevOps) — Application source code repositories.
+> **GitOps Config (Gitea):** `http://192.168.8.80:3000/nisalatp/gitops-manifests.git` — Kubernetes deployments for Argo CD.
 
 ## Index
 

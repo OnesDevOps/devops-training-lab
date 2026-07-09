@@ -2,7 +2,8 @@
 
 > A hands-on, enterprise-grade microservices infrastructure lab for training DevOps engineers.
 
-**Gitea Organization:** [http://192.168.8.80:3000/nisalatp](http://192.168.8.80:3000/nisalatp)
+**Source Code (GitHub):** [https://github.com/OnesDevOps](https://github.com/OnesDevOps)
+**GitOps Config (Gitea):** `http://192.168.8.80:3000/nisalatp/gitops-manifests.git`
 
 ---
 

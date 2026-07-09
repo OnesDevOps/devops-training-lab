@@ -605,8 +605,7 @@ redis --> v4
 ### What Is It?
 **Gitea** is a painless self-hosted Git service. It is a lightweight alternative to GitHub or GitLab, perfect for running on a private VM.
 
-### Why Is It Here?
-In an enterprise private cloud, you do not rely on public GitHub. Gitea allows us to host our source code entirely on-premises. More importantly, it provides **Webhooks** which notify Jenkins whenever code is pushed, kicking off the CI pipeline. It also hosts the Kubernetes manifest repository for Argo CD to watch.
+In our hybrid-cloud setup, we enforce a strict separation of concerns for version control. Application **source code** is hosted on public GitHub to facilitate easy IDE integrations. However, **infrastructure state** is strictly isolated. Gitea hosts the GitOps Kubernetes manifest repository. Jenkins pushes updated image tags directly to this local Gitea repository after a successful build, and Argo CD watches it continuously to synchronize the K3s cluster state. This ensures our deployment configurations remain strictly within our private network.
 
 ### How Is It Deployed?
 It runs as a Docker container on the `Source Control` VM (`192.168.8.80`).

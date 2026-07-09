@@ -41,6 +41,7 @@ node "Lenovo Laptop — Datacenter\n(Multipass Hypervisor)" as dc {
         component [Argo CD] as argocd
     }
     component [k8s-worker-1 VM\n(App Workloads)] as k3sworker
+    component [k8s-worker-2 VM\n(Mac Workloads)] as k3sworker2
     component [db-node VMs\n(Kafka, Mongo, PG, Redis, MinIO)] as native
 }
 
@@ -51,6 +52,7 @@ jenkins --> registry : Build & Push image
 jenkins --> gitea : Update K8s Manifest Image Tag
 argocd --> gitea : Watch for Manifest Changes
 argocd --> k3sworker : Deploy Pods
+argocd --> k3sworker2 : Deploy Pods
 iac --> dc : Provision & configure
 k3sworker --> registry : Pull images
 @enduml
@@ -66,7 +68,8 @@ k3sworker --> registry : Pull images
 |---|---------|------|----|-----|------|
 | 1 | Developer Desktop | UTM VM | Ubuntu Desktop | 4 GB | Code, CI/CD, IaC, kubectl |
 | 2 | Container Registry | UTM VM | Debian 12 Minimal | 1 GB | Docker Registry — private Docker images |
-| 4 | Datacenter | Physical (Lenovo) | Multipass Hypervisor | 16 GB | Hosts 4 VMs (k8s-master, k8s-worker, 2x db-nodes) |
+| 4 | Datacenter | Physical (Lenovo) | Multipass Hypervisor | 16 GB | Hosts 4 VMs (k8s-master, k8s-worker-1, 2x db-nodes) |
+| 9 | Mac Worker | UTM/OrbStack VM | Ubuntu Server | 2 GB | `k8s-worker-2` — Expands Kubernetes cluster capacity |
 | 8 | Source Control | UTM VM | Ubuntu Server | 1 GB | Gitea — Self-hosted Git repositories |
 
 ### Developer Desktop (VM 1)
@@ -93,9 +96,9 @@ All **human-driven** and **control-plane** activity happens here:
 
 | Component | Role |
 |-----------|------|
-| **Gitea** | Lightweight, self-hosted Git service providing code hosting and CI/CD webhooks |
+| **Gitea** | Lightweight, self-hosted Git service providing GitOps configuration hosting. |
 
-> **Why Gitea instead of GitHub?** A true private cloud lab hosts everything on-premises. Gitea allows us to simulate a self-hosted Enterprise GitHub/GitLab environment, complete with local webhooks to trigger our internal Jenkins instance and GitOps pipelines.
+> **Why the split between GitHub and Gitea?** To simulate a hybrid environment and adhere to GitOps best practices, we have separated concerns. The **Source Code** is hosted publicly on GitHub to allow easy cloning and remote IDE access. However, the **GitOps Manifests** (Kubernetes deployments) are hosted completely on-premises on our local Gitea instance. This ensures that our private cloud infrastructure state remains completely local, and Argo CD can sync from a local network repository without needing outbound internet access.
 
 ### Datacenter (Lenovo Laptop)
 
@@ -106,6 +109,7 @@ This is the **production-like deployment target** — it runs only workloads:
 | **Multipass** | Native Ubuntu hypervisor that provisions lightweight VMs |
 | **k8s-master VM** | Runs the K3s Kubernetes Control Plane |
 | **k8s-worker-1 VM** | Runs the application microservices with HPA |
+| **k8s-worker-2 VM** | Secondary worker node hosted on Mac to scale capacity |
 | **db-node VMs** | Runs Kafka, Redis, PostgreSQL, MongoDB, and MinIO |
 
 ---
@@ -140,11 +144,16 @@ node "Datacenter (Lenovo Multipass Hypervisor)" as dc #LightGreen {
     }
     
     node "VM: k8s-worker-1" {
-        frame "K3s Cluster (Kubernetes)" as k3s {
-            node "Pod: Angular Frontend\n(Nginx, min 1 / max 2)" as fe #PaleGoldenRod
-            node "Pod: Java Spring Boot\nCustomer Backend\n(min 1 / max 2)" as java #LightCoral
-            node "Pod: .NET ASP.NET Core\nLab Backend\n(min 1 / max 2)" as dotnet #LightSteelBlue
-        }
+        [Microservice Pods]
+    }
+    node "VM: k8s-worker-2 (Mac)" {
+        [Microservice Pods]
+    }
+    
+    frame "K3s Cluster (Kubernetes)" as k3s {
+        node "Pod: Angular Frontend\n(Nginx, min 1 / max 2)" as fe #PaleGoldenRod
+        node "Pod: Java Spring Boot\nCustomer Backend\n(min 1 / max 2)" as java #LightCoral
+        node "Pod: .NET ASP.NET Core\nLab Backend\n(min 1 / max 2)" as dotnet #LightSteelBlue
     }
 
     node "VMs: db-node-1 / db-node-2" {

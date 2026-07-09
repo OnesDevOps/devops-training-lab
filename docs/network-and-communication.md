@@ -19,24 +19,31 @@ cloud "LAN (Home/Office Network)\ne.g. 192.168.1.0/24" as lan {
         node "VM 8: Gitea\n192.168.8.80" as vm8
     }
     
-    node "Lenovo (Multipass VMs)" {
-        node "k8s-master\n192.168.8.3x" as k8sm
-        node "k8s-worker-1\n192.168.8.3x" as k8sw
-        node "db-node-1\n192.168.8.3x" as db1
-        node "db-node-2\n192.168.8.3x" as db2
+    node "Lenovo (Multipass VMs - 10.202.73.x NAT)" {
+        node "k8s-master\n10.202.73.92" as k8sm
+        node "k8s-worker-1\n10.202.73.146" as k8sw
+        node "db-node-1\n10.202.73.32" as db1
+        node "db-node-2\n10.202.73.133" as db2
+    }
+    
+    node "Mac Worker (UTM VM)" {
+        node "k8s-worker-2\n192.168.8.x" as k8sw2
     }
 }
 
 vm1 --> k8sm : kubectl (6443)
 vm1 --> vm2 : docker push/pull (80)
 k8sw --> vm2 : K3s pulls images (80)
+k8sw2 --> vm2 : K3s pulls images (80)
 k8sw --> db1 : App connects to DBs
+k8sw2 --> db1 : App connects to DBs
 k8sw --> db2 : App connects to MinIO/Kafka
+k8sw2 --> db2 : App connects to MinIO/Kafka
 
 @enduml
 ```
 
-> **All machines and VMs must be on the same LAN**. UTM and Multipass VMs must use **Bridged** networking to get physical LAN IP addresses. The Multipass VMs on the Lenovo are configured to use the `192.168.8.30-39` range.
+> **Routing Note (Wi-Fi Limitation):** The Mac VMs use **Bridged** networking to get `192.168.8.x` IPs. The Datacenter (Lenovo) is on Wi-Fi, which prevents L2 bridging. Instead, it uses NAT (`10.202.73.x`) and the Mac developer desktop has a **static IP route** pointing to the Lenovo host (`192.168.8.40`) to reach those VMs.
 
 ---
 
@@ -46,11 +53,12 @@ k8sw --> db2 : App connects to MinIO/Kafka
 |---------|------|---------------|
 | VM 1: Dev Desktop | Control Plane | LAN only |
 | VM 2: Registry | Image Storage | LAN only |
-| VM 8: Source Control | Gitea | LAN only |
-| `k8s-master` | K3s Control Plane | LAN + K3s Pod/Service networks |
-| `k8s-worker-1` | App Workloads | LAN + K3s Pod/Service networks |
-| `db-node-1` | Stateful DBs | LAN + Docker Bridge |
-| `db-node-2` | Stateful DBs | LAN + Docker Bridge |
+| VM 8: GitOps Control | Gitea | LAN only |
+| `k8s-master` | K3s Control Plane | NAT (10.202.73.x) + K3s Pod/Service networks |
+| `k8s-worker-1` | App Workloads | NAT (10.202.73.x) + K3s Pod/Service networks |
+| `k8s-worker-2` | App Workloads | LAN (192.168.8.x) + K3s Pod/Service networks |
+| `db-node-1` | Stateful DBs | NAT (10.202.73.x) + Docker Bridge |
+| `db-node-2` | Stateful DBs | NAT (10.202.73.x) + Docker Bridge |
 
 ### Kubernetes Internal Networks
 
@@ -96,20 +104,20 @@ k8sw --> db2 : App connects to MinIO/Kafka
 ```
 Developer Desktop (VM 1)
     │
-    ├── IDE checks code into Gitea (VM 8)
+    ├── IDE checks code into GitHub (Public)
     │
-    ├── Jenkins is triggered via Webhook from Gitea
+    ├── GitHub Webhook triggers Jenkins
     │   ├── Checks out code
     │   ├── Runs tests
     │   └── Builds Docker image
     │
     ├── Jenkins pushes image to Registry (VM 2)
     │
-    └── Jenkins pushes updated Kubernetes manifests back to Gitea
+    └── Jenkins pushes updated Kubernetes manifests back to Gitea GitOps Repo (VM 8)
     
 Datacenter (K3s)
     │
-    └── Argo CD detects manifest changes in Gitea and deploys new Pods
+    └── Argo CD detects manifest changes in Gitea and deploys new Pods across k8s-worker-1 and k8s-worker-2
 ```
 
 ### Application Traffic Flow
@@ -118,7 +126,7 @@ Datacenter (K3s)
 User Browser
     │
     ▼ (HTTP Port 80)
-`k8s-worker-1` (Traefik Ingress)
+`k8s-worker-1` / `k8s-worker-2` (Traefik Ingress)
     │
     ├── Route `/` ─────────► Angular Frontend Pod
     ├── Route `/api/customers` ─► Customer Service Pod
@@ -128,7 +136,7 @@ User Browser
 ### Backend to Database Flow
 
 ```
-`k8s-worker-1` (Application Pods)
+`k8s-worker-1` / `k8s-worker-2` (Application Pods)
     │
     ├── Customer Service Pod
     │   ├── TCP 5432 ──► `db-node-1` (PostgreSQL)

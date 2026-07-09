@@ -13,6 +13,7 @@
 | **Datacenter Host** | Ubuntu Desktop | 16 GB | 16 cores| 500+ GB| Lenovo Laptop |
 | VM 4: `k8s-master` | Ubuntu Cloud | 1 GB | 1 core | 10 GB | Lenovo (Multipass) |
 | VM 5: `k8s-worker-1` | Ubuntu Cloud | 2 GB | 2 cores | 15 GB | Lenovo (Multipass) |
+| VM 9: `k8s-worker-2` | Ubuntu Server | 2 GB | 2 cores | 15 GB | Mac Workstation |
 | VM 6: `db-node-1` | Ubuntu Cloud | 2 GB | 2 cores | 15 GB | Lenovo (Multipass) |
 | VM 7: `db-node-2` | Ubuntu Cloud | 2.5 GB| 2 cores | 15 GB | Lenovo (Multipass) |
 | VM 8: Source Control | Ubuntu Server | 1 GB | 1 core | 20 GB | MacBook (UTM) |
@@ -30,6 +31,7 @@
 | Lenovo Host OS | ~8.5 GB | 9 cores | Ubuntu Desktop overhead & spare capacity |
 | `k8s-master` | 1 GB | 1 core | K3s Control Plane |
 | `k8s-worker-1` | 2 GB | 2 cores | App Pods (Angular, Java, .NET) |
+| `k8s-worker-2` | 2 GB | 2 cores | App Pods (Cross-Cloud) |
 | `db-node-1` | 2 GB | 2 cores | Postgres, Mongo, Redis |
 | `db-node-2` | 2.5 GB| 2 cores | Kafka, MinIO |
 | **TOTAL** | **16 GB** | **16 cores** | Fully utilized |
