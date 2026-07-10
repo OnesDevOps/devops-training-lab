@@ -19,56 +19,66 @@ pipeline {
     // Stages are the major steps in your pipeline
     stages {
         
-        // Stage 1: Build the .NET application into a Docker container
-        stage('Build Image') {
+        stage('Build') {
+            steps {
+                dir('src/lab-service') {
+                    sh 'dotnet restore'
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                dir('src/lab-service') {
+                    sh 'dotnet publish -c Release -o out'
+                }
+            }
+        }
+
+        stage('Image Build') {
             steps {
                 script {
-                    // Unlike Java, modern .NET apps use Multi-Stage Dockerfiles.
-                    // This means the code compilation actually happens INSIDE the Docker build process!
-                    // We tag the image with the unique Jenkins BUILD_NUMBER (e.g. lab-service:14)
                     sh "docker build --platform linux/amd64 -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} src/${IMAGE_NAME}"
                 }
             }
         }
 
-        // Stage 2: Push the Docker container to our private registry
-        stage('Push Image') {
+        stage('Image Test') {
             steps {
                 script {
-                    // Push the uniquely tagged image
+                    sh "docker inspect ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} > /dev/null"
+                }
+            }
+        }
+
+        stage('Image Push') {
+            steps {
+                script {
                     sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}"
-                    // Also push the 'latest' tag so it's easy to pull manually if needed
                     sh "docker tag ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
                     sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
                 }
             }
         }
 
-        // Stage 3: The GitOps CD step! Update the Kubernetes manifests.
-        stage('Update GitOps') {
+        stage('Update GitOps Tags') {
             steps {
-                // This block securely injects the Gitea username and password as environment variables
                 withCredentials([usernamePassword(credentialsId: "${GITEA_CREDS_ID}", passwordVariable: 'GITEA_PASS', usernameVariable: 'GITEA_USER')]) {
                     sh '''
-                        # 1. Configure git so the commit has an author
                         git config --global user.email "jenkins@devopslab.local"
                         git config --global user.name "Jenkins CI"
                         
-                        # 2. Setup GIT_ASKPASS to securely pass the password without URL-encoding issues
                         echo '#!/bin/sh' > askpass.sh
                         echo 'echo "$GITEA_PASS"' >> askpass.sh
                         chmod +x askpass.sh
                         export GIT_ASKPASS=$(pwd)/askpass.sh
                         
-                        # 3. Clone the GitOps repository where our Kubernetes YAML files live
                         rm -rf devops-lab-manifests
                         git clone "http://${GITEA_USER}@${GITEA_HOST}/${GITEA_USER}/devops-lab-manifests.git"
                         cd devops-lab-manifests
                         
-                        # 4. Use 'sed' to replace the old Docker image tag with the new one
                         sed -i "s|image: .*|image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}|g" apps/${IMAGE_NAME}/deployment.yaml
                         
-                        # 5. Commit and push the updated YAML file back to Gitea
                         git add apps/${IMAGE_NAME}/deployment.yaml
                         git commit -m "Update ${IMAGE_NAME} image to ${BUILD_NUMBER} [skip ci]" || echo "No changes"
                         git push origin main
