@@ -22,7 +22,7 @@ pipeline {
         stage('Build') {
             steps {
                 dir('src/lab-service') {
-                    sh 'dotnet restore'
+                    sh 'docker run --rm -u $(id -u):$(id -g) -v $(pwd):/app -w /app -e DOTNET_CLI_HOME=/app mcr.microsoft.com/dotnet/sdk:8.0-alpine dotnet restore'
                 }
             }
         }
@@ -30,7 +30,7 @@ pipeline {
         stage('Test') {
             steps {
                 dir('src/lab-service') {
-                    sh 'dotnet publish -c Release -o out'
+                    sh 'docker run --rm -u $(id -u):$(id -g) -v $(pwd):/app -w /app -e DOTNET_CLI_HOME=/app mcr.microsoft.com/dotnet/sdk:8.0-alpine dotnet publish -c Release -o out'
                 }
             }
         }
