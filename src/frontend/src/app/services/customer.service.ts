@@ -19,7 +19,10 @@ export class CustomerService {
   constructor(private http: HttpClient) {}
 
   getAll(search?: string): Observable<Customer[]> {
-    const params = search ? { search } : {};
+    const params: Record<string, string> = {};
+    if (search) {
+      params['search'] = search;
+    }
     return this.http.get<Customer[]>(this.apiUrl, { params });
   }
 

@@ -26,7 +26,10 @@ export class LabService {
   constructor(private http: HttpClient) {}
 
   getAll(customerId?: number): Observable<LabResult[]> {
-    const params = customerId ? { customerId: customerId.toString() } : {};
+    const params: Record<string, string> = {};
+    if (customerId) {
+      params['customerId'] = customerId.toString();
+    }
     return this.http.get<LabResult[]>(this.apiUrl, { params });
   }
 
