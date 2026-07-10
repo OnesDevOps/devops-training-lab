@@ -22,7 +22,7 @@ pipeline {
         stage('Build') {
             steps {
                 dir('src/frontend') {
-                    sh 'docker run --rm -u $(id -u):$(id -g) -v $(pwd):/app -w /app -e npm_config_cache=/app/.npm-cache node:20-alpine npm ci'
+                    sh 'docker run --rm -u $(id -u):$(id -g) -v $(pwd):/app -w /app -e npm_config_cache=/app/.npm-cache node:20-alpine npm install'
                 }
             }
         }
