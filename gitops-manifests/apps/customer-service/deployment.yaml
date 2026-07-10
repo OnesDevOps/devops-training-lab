@@ -47,3 +47,6 @@ spec:
         # Connects the app to the Kafka broker on the Datacenter
         - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
           value: "db-node-2:9092"
+        # Connects the app to Redis on the Datacenter
+        - name: REDIS_HOST
+          value: "db-node-1"

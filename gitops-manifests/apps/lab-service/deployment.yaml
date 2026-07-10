@@ -47,3 +47,9 @@ spec:
         # Connects the app to the MinIO object storage on the Datacenter
         - name: MinIO__Endpoint
           value: "http://db-node-2:9000"
+        # Connects the app to Kafka on the Datacenter
+        - name: Kafka__BootstrapServers
+          value: "db-node-2:9092"
+        # Connects the app to Redis on the Datacenter
+        - name: Redis__Configuration
+          value: "db-node-1:6379"
