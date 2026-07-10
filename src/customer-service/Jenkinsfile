@@ -80,6 +80,7 @@ pipeline {
                         chmod +x askpass.sh
                         export GIT_ASKPASS=$(pwd)/askpass.sh
                         
+                        rm -rf devops-lab-manifests
                         git clone "http://${GITEA_USER}@${GITEA_HOST}/${GITEA_USER}/devops-lab-manifests.git"
                         cd devops-lab-manifests
                         
