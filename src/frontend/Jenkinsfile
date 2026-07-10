@@ -27,7 +27,7 @@ pipeline {
                     // The first stage runs 'npm install' and 'npm run build'.
                     // The second stage copies the built HTML/JS files into an NGINX web server.
                     // We tag the image with the unique Jenkins BUILD_NUMBER (e.g. frontend:14)
-                    dockerImage = docker.build("${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}", "src/${IMAGE_NAME}")
+                    sh "docker build --platform linux/amd64 -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} src/${IMAGE_NAME}"
                 }
             }
         }
@@ -37,9 +37,10 @@ pipeline {
             steps {
                 script {
                     // Push the uniquely tagged image
-                    dockerImage.push()
+                    sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}"
                     // Also push the 'latest' tag so it's easy to pull manually if needed
-                    dockerImage.push('latest')
+                    sh "docker tag ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+                    sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
                 }
             }
         }
