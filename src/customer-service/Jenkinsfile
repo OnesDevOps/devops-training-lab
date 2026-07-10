@@ -19,63 +19,72 @@ pipeline {
     // Stages are the major steps in your pipeline
     stages {
         
-        // Stage 1: Build the Java application using Maven
-        stage('Build & Test') {
+        // Stage 1: Build the Java application
+        stage('Build') {
             steps {
                 dir('src/customer-service') {
-                    sh 'mvn clean package -e > mvn.log 2>&1 || (tail -n 150 mvn.log && exit 1)'
+                    sh 'mvn clean compile -e'
                 }
             }
         }
 
-        // Stage 2: Package the compiled Java app into a Docker container
-        stage('Build Image') {
+        // Stage 2: Test and Package
+        stage('Test') {
+            steps {
+                dir('src/customer-service') {
+                    sh 'mvn package -e > mvn.log 2>&1 || (tail -n 150 mvn.log && exit 1)'
+                }
+            }
+        }
+
+        // Stage 3: Package the compiled Java app into a Docker container
+        stage('Image Build') {
             steps {
                 script {
-                    // This uses the Jenkins Docker Plugin to build the image defined in the Dockerfile
-                    // We tag the image with the unique Jenkins BUILD_NUMBER (e.g. customer-service:14)
                     sh "docker build --platform linux/amd64 -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} src/${IMAGE_NAME}"
                 }
             }
         }
 
-        // Stage 3: Push the Docker container to our private registry
-        stage('Push Image') {
+        // Stage 4: Verify the Docker Image
+        stage('Image Test') {
             steps {
                 script {
-                    // Push the uniquely tagged image
+                    // Simple validation to ensure the image exists and is readable
+                    sh "docker inspect ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} > /dev/null"
+                }
+            }
+        }
+
+        // Stage 5: Push the Docker container to our private registry
+        stage('Image Push') {
+            steps {
+                script {
                     sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}"
-                    // Also push the 'latest' tag so it's easy to pull manually if needed
                     sh "docker tag ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
                     sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
                 }
             }
         }
 
-        // Stage 4: The GitOps CD step! Update the Kubernetes manifests.
-        stage('Update GitOps') {
+        // Stage 6: The GitOps CD step! Update the Kubernetes manifests.
+        stage('Update GitOps Tags') {
             steps {
-                // This block securely injects the Gitea username and password as environment variables
                 withCredentials([usernamePassword(credentialsId: "${GITEA_CREDS_ID}", passwordVariable: 'GITEA_PASS', usernameVariable: 'GITEA_USER')]) {
                     sh '''
-                        # 1. Configure git so the commit has an author
                         git config --global user.email "jenkins@devopslab.local"
                         git config --global user.name "Jenkins CI"
                         
-                        # 2. Setup GIT_ASKPASS to securely pass the password without URL-encoding issues
                         echo '#!/bin/sh' > askpass.sh
                         echo 'echo "$GITEA_PASS"' >> askpass.sh
                         chmod +x askpass.sh
                         export GIT_ASKPASS=$(pwd)/askpass.sh
                         
-                        # 3. Clone the GitOps repository where our Kubernetes YAML files live
                         git clone "http://${GITEA_USER}@${GITEA_HOST}/${GITEA_USER}/devops-lab-manifests.git"
                         cd devops-lab-manifests
                         
-                        # 4. Use 'sed' to replace the old Docker image tag with the new one
                         sed -i "s|image: .*|image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}|g" apps/${IMAGE_NAME}/deployment.yaml
                         
-                        # 5. Commit and push the updated YAML file back to Gitea
                         git add apps/${IMAGE_NAME}/deployment.yaml
                         git commit -m "Update ${IMAGE_NAME} image to ${BUILD_NUMBER} [skip ci]" || echo "No changes"
                         git push origin main
